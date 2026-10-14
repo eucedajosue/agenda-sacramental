@@ -1,0 +1,69 @@
+rules_version = '2';
+
+// Reglas de seguridad: aquí se aplican de verdad los roles y permisos.
+// Aunque alguien modifique la app en su navegador, la base de datos rechaza
+// cualquier lectura o escritura para la que su rol no tenga permiso.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function barrio(b) { return get(/databases/$(database)/documents/barrios/$(b)).data; }
+    function isAdmin(b) { return signedIn() && request.auth.uid in barrio(b).admins; }
+    function miembroPath(b) { return /databases/$(database)/documents/barrios/$(b)/miembros/$(request.auth.uid); }
+    function activo(b) {
+      return signedIn() && exists(miembroPath(b)) && get(miembroPath(b)).data.estado == 'activo';
+    }
+    function permiso(b, p) {
+      return isAdmin(b) || (
+        activo(b)
+        && get(miembroPath(b)).data.get('rolId', null) != null
+        && get(/databases/$(database)/documents/barrios/$(b)/roles/$(get(miembroPath(b)).data.rolId)).data.permisos.get(p, false) == true
+      );
+    }
+
+    // Perfil personal: solo indica a qué barrio pertenece el usuario.
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /barrios/{b} {
+      // Cualquier usuario con sesión puede comprobar que un código de barrio existe.
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.admins == [request.auth.uid];
+      allow update: if isAdmin(b) && request.resource.data.admins.size() > 0;
+
+      match /miembros/{uid} {
+        allow get: if (signedIn() && request.auth.uid == uid) || permiso(b, 'gestionarUsuarios');
+        allow list: if permiso(b, 'gestionarUsuarios');
+        // Un usuario solo puede crear su propia solicitud, y siempre como "pendiente" y sin rol.
+        allow create: if isAdmin(b) || (
+          signedIn() && request.auth.uid == uid
+          && request.resource.data.estado == 'pendiente'
+          && !('rolId' in request.resource.data)
+        );
+        allow update, delete: if permiso(b, 'gestionarUsuarios');
+      }
+
+      match /roles/{rolId} {
+        allow read: if activo(b) || isAdmin(b);
+        allow write: if isAdmin(b);
+      }
+
+      match /participantes/{id} {
+        allow read: if permiso(b, 'verParticipantes') || permiso(b, 'editarParticipantes') || permiso(b, 'editarAgenda');
+        allow write: if permiso(b, 'editarParticipantes');
+      }
+
+      // Teléfonos separados para que solo los vean los roles con ese permiso.
+      match /contactos/{id} {
+        allow read: if permiso(b, 'verTelefonos');
+        allow write: if permiso(b, 'editarParticipantes');
+      }
+
+      match /reuniones/{fecha} {
+        allow read: if permiso(b, 'verAgenda');
+        allow write: if permiso(b, 'editarAgenda');
+      }
+    }
+  }
+}
