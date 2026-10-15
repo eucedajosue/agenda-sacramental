@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.3";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.3";
+import { store, DEMO } from "./store.js?v=2026.10.15.4";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.4";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.3";
+const VERSION = "2026.10.15.4";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -1161,7 +1161,9 @@ async function vistaParticipantes() {
         const activo = !!b.dataset.activar;
         if (!activo && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes activarlo de nuevo cuando quieras.`)) return;
         intentar(async () => {
-          await store.set(`${B()}/participantes/${p.id}`, { activo }, true);
+          // Se guarda el registro completo (no solo "activo") para descartar campos antiguos, como la edad,
+          // que las reglas de seguridad ya no aceptan
+          await store.set(`${B()}/participantes/${p.id}`, { nombre: p.nombre, organizacion: p.organizacion || "", activo });
           // Se actualiza solo la lista, sin recargar la página ni perder filtros o posición
           p.activo = activo;
           S.participantes = null;
