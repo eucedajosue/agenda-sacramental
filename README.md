@@ -95,7 +95,7 @@ La importación de participantes también acepta archivos de Excel.
 ## Participantes inactivos
 
 En **Participantes**, el botón **Desactivar** saca a una persona de los selectores de la agenda (por ejemplo, si se mudó)
-sin borrar su historial. Aparece al final de la lista como "Inactivo" y se puede **Reactivar** en cualquier momento.
+sin borrar su historial. Aparece atenuado con la etiqueta "Inactivo" y se puede **Reactivar** en cualquier momento.
 El filtro de estado permite ver solo activos o solo inactivos. Al editar o reimportar, se conserva su estado.
 
 ## App Check (opcional, protección extra)

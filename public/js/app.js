@@ -1030,10 +1030,8 @@ async function vistaParticipantes() {
   const pintar = () => {
     const q = norm(filtro.q);
     const estadoOk = (p) => !filtro.estado || (filtro.estado === "inactivos") === (p.activo === false);
-    // Los inactivos van al final de la lista
-    const vis = lista
-      .filter((p) => (!q || norm(p.nombre).includes(q)) && (!filtro.org || p.organizacion === filtro.org) && estadoOk(p))
-      .sort((a, b) => (a.activo === false) - (b.activo === false));
+    // Siempre en orden alfabético, estén activos o no
+    const vis = lista.filter((p) => (!q || norm(p.nombre).includes(q)) && (!filtro.org || p.organizacion === filtro.org) && estadoOk(p));
     if (!lista.length) {
       $lista.innerHTML = `<div class="card center"><p>Aún no hay participantes.</p>
         ${puedeEditar ? `<p class="muted small">Agrégalos uno por uno o importa un archivo CSV con las columnas: <code>Nombre, Organización, Teléfono</code>.</p>` : ""}
