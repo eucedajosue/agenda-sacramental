@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.8";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.8";
+import { store, DEMO } from "./store.js?v=2026.10.15.9";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.9";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.8";
+const VERSION = "2026.10.15.9";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -469,6 +469,25 @@ const confirmarEliminarAgenda = (fecha) =>
     aceptar: "Eliminar agenda", peligro: true,
   });
 
+// Oraciones e himnos que todavía no tienen asignación en una agenda
+const himnoAsignado = (h) => !!(h?.numero || h?.titulo);
+function faltantes(r) {
+  const f = [];
+  if (!himnoAsignado(r.primerHimno)) f.push("primer himno");
+  if (!r.primeraOracion?.nombre) f.push("primera oración");
+  if (!himnoAsignado(r.himnoSacramental)) f.push("himno sacramental");
+  if (r.tipo !== "testimonios" && !himnoAsignado(r.himnoIntermedio)) f.push("himno intermedio");
+  if (!himnoAsignado(r.ultimoHimno)) f.push("último himno");
+  if (!r.ultimaOracion?.nombre) f.push("última oración");
+  return f;
+}
+function avisoFaltantes(r) {
+  const f = faltantes(r);
+  if (!f.length) return "";
+  const texto = f.join(", ");
+  return `<p class="aviso-falta"><span class="ms">warning</span><span>Falta asignar: ${texto.charAt(0).toUpperCase() + texto.slice(1)}</span></p>`;
+}
+
 const discursantesDe = (r) => (r.tipo === "testimonios" ? [] : [...(r.discursantes1 || []), ...(r.discursantes2 || [])]);
 
 // Historial por persona: fecha del último discurso, de la última oración,
@@ -526,7 +545,7 @@ async function vistaAgendas() {
   const tarjeta = (r, i) => `<div class="card reunion ${i === 0 ? "destacada" : ""}">
       <div>${i === 0 ? `<span class="eyebrow">Próxima reunión</span>` : ""}
         <strong>${esc(fechaLarga(r.id))}</strong> ${pill(r)}
-        <p class="muted small">${resumen(r)}</p></div>
+        <p class="muted small">${resumen(r)}</p>${avisoFaltantes(r)}</div>
       <div class="acciones">
         <a class="btn ghost sm" href="#/ver/${r.id}">Ver</a>
         ${puedeEditar ? `<a class="btn sm" href="#/agenda/${r.id}">Editar</a>` : ""}
@@ -872,6 +891,7 @@ async function vistaEditor(fecha) {
     let n = 0;
     main.innerHTML = `
     <div class="bar"><div><a href="#/agenda" class="btn text"><span class="ms">arrow_back</span>Agendas</a><h1 class="cap">${esc(fechaLarga(fecha))}</h1></div></div>
+    <div id="avisoFaltan">${avisoFaltantes(draft)}</div>
     ${participantes.length ? "" : `<p class="aviso">Aún no hay participantes registrados. Puedes registrarlos desde cada selector con "Nuevo participante", o <a href="#/participantes">importarlos todos</a>.</p>`}
     ${seccion(++n, "Presidencia", `
       <div class="dos">${persona("preside", "Preside")}${persona("dirige", "Dirige")}</div>
@@ -901,10 +921,15 @@ async function vistaEditor(fecha) {
     </div>`;
   };
 
+  const actualizarAviso = () => {
+    const a = document.getElementById("avisoFaltan");
+    if (a) a.innerHTML = avisoFaltantes(draft);
+  };
   const marcar = () => {
     S.dirty = true;
     const e = document.getElementById("estado");
     if (e) e.textContent = "Cambios sin guardar";
+    actualizarAviso();
   };
 
   main.oninput = (e) => {
@@ -922,6 +947,7 @@ async function vistaEditor(fecha) {
         else if (antes && catalogo.porTitulo.has(norm(antes))) setPath(draft, `${m[1]}.titulo`, "");
         caja.querySelector("[data-himno-pick]").innerHTML = etiquetaHimno(m[1]);
         main.querySelector(`[data-libro="${m[1]}"]`).textContent = libroDe(t.value);
+        actualizarAviso();
       }
     }
   };
