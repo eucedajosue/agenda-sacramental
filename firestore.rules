@@ -46,6 +46,17 @@ service cloud.firestore {
         && textoOpcional(datos(), 'nombre', 120);
     }
 
+    // Catálogo de himnos compartido por todos los barrios: lo lee cualquiera con sesión,
+    // solo el superadministrador lo reemplaza (importando el Excel).
+    match /catalogo/{id} {
+      allow read: if signedIn();
+      allow write: if esSuperadmin() && id == 'himnos'
+        && datos().keys().hasOnly(['lista', 'actualizadoEn', 'actualizadoPor'])
+        && datos().lista is list && datos().lista.size() <= 3000
+        && textoOpcional(datos(), 'actualizadoEn', 40)
+        && textoOpcional(datos(), 'actualizadoPor', 120);
+    }
+
     match /barrios/{b} {
       // Cualquier usuario con sesión puede comprobar que un código de barrio existe.
       allow get: if signedIn();

@@ -298,6 +298,7 @@ section.card { padding: 1.35rem 1.25rem; }
 .fila-acc { display: flex; flex-direction: column; }
 .fila + .btn, section > .btn { margin-top: .5rem; }
 .himno { display: grid; grid-template-columns: 88px 1fr; gap: .5rem; }
+.himno-libro { display: block; margin-top: .3rem; font-size: .75rem; min-height: 1em; }
 
 /* Selector de participantes */
 .picker {

@@ -73,6 +73,22 @@ discursantes, campos permitidos), para que nadie pueda guardar documentos enorme
 **Recomendación:** mantén el proyecto en el plan gratuito **Spark**. Si alguien abusa, lo peor que
 pasa es que se alcanza la cuota diaria; no se genera ningún cobro.
 
+## Catálogo de himnos
+
+`public/datos/himnos.xlsx` trae los himnos SUD en español, tomados de la Biblioteca de música de la Iglesia:
+
+- **Himnos (1992):** números 1 a 209.
+- **Himnos: Para el hogar y la Iglesia:** números 1001 en adelante (los publicados en español a la fecha).
+
+El superadministrador lo carga una vez en **Barrios → Catálogo de himnos → Cargar catálogo incluido**, y queda
+disponible para todos los barrios. En el editor de agendas, al escribir el número del himno se completa el título
+(y se indica de qué himnario es); también se puede escribir parte del título para buscarlo y se completa el número.
+
+Cuando la Iglesia publique himnos nuevos, agrégalos al Excel (columnas Número, Título, Himnario, Sección) e
+impórtalo con **Importar Excel o CSV**. Al importar se reemplaza el catálogo completo.
+
+La importación de participantes también acepta archivos de Excel.
+
 ## App Check (opcional, protección extra)
 
 Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman directo a Firestore).
@@ -88,8 +104,8 @@ Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman 
 
 ## Probar las reglas de seguridad
 
-Las reglas se probaron con el emulador de Firestore (37 casos: barrios pendientes, aprobación,
-suspensión, límites de tamaño y permisos). El emulador requiere Java 21 con `firebase-tools` actual.
+Las reglas se probaron con el emulador de Firestore (43 casos: barrios pendientes, aprobación,
+suspensión, límites de tamaño, permisos y catálogo de himnos). El emulador requiere Java 21 con `firebase-tools` actual.
 
 ## Importar participantes
 

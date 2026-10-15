@@ -602,10 +602,11 @@ async function vistaAgendas() {
 async function vistaEditor(fecha) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || "")) return (location.hash = "#/agenda");
   const main = shell("agenda");
-  const [existente, participantes, reuniones] = await Promise.all([
+  const [existente, participantes, reuniones, catalogo] = await Promise.all([
     store.get(`${B()}/reuniones/${fecha}`),
     cargarParticipantes(true),
     store.list(`${B()}/reuniones`).catch(() => []),
+    cargarHimnos(),
   ]);
   const draft = existente ? { ...nuevaReunion(fecha), ...existente } : nuevaReunion(fecha);
   delete draft.id;
@@ -726,10 +727,13 @@ async function vistaEditor(fecha) {
   };
   const txt = (path, ph = "", type = "text") =>
     `<input type="${type}" data-f="${path}" value="${esc(getPath(draft, path))}" placeholder="${ph}">`;
+  // Himnos: al escribir el número se completa el título, y al elegir un título se completa el número
+  const libroDe = (numero) => catalogo.porNumero.get(String(numero || "").trim())?.h || "";
   const himno = (path, label) => `
     <div class="field"><label>${label}</label>
-      <div class="himno"><input type="number" min="1" data-f="${path}.numero" value="${esc(getPath(draft, path)?.numero)}" placeholder="N.º">
-      <input data-f="${path}.titulo" value="${esc(getPath(draft, path)?.titulo)}" placeholder="Título del himno"></div></div>`;
+      <div class="himno" data-himno="${path}"><input type="number" min="1" inputmode="numeric" data-f="${path}.numero" value="${esc(getPath(draft, path)?.numero)}" placeholder="N.º">
+      <input data-f="${path}.titulo" list="dlHimnos" autocomplete="off" value="${esc(getPath(draft, path)?.titulo)}" placeholder="${catalogo.lista.length ? "Título (escribe para buscar)" : "Título del himno"}"></div>
+      <small class="muted himno-libro" data-libro="${path}">${esc(libroDe(getPath(draft, path)?.numero))}</small></div>`;
   const persona = (path, label, tipo) => `<div class="field"><label>${label}</label>${selPersona(path, tipo)}</div>`;
   const filas = (lista, render, textoAgregar) => `
     ${draft[lista].map((_, i) => `<div class="fila">
@@ -769,6 +773,7 @@ async function vistaEditor(fecha) {
     ${disc ? seccion(++n, "Discursantes (después del himno intermedio)", filas("discursantes2", discursante, "Agregar discursante")) : ""}
     ${seccion(++n, "Clausura", himno("ultimoHimno", "Último himno") + persona("ultimaOracion", "Última oración", "oracion"))}
     ${seccion(++n, "Notas", `<textarea data-f="notas" rows="3" placeholder="Notas internas (opcional)">${esc(draft.notas)}</textarea>`)}
+    <datalist id="dlHimnos">${catalogo.lista.map((h) => `<option value="${esc(h.t)}">${h.n} · ${esc(h.h)}</option>`).join("")}</datalist>
     <div class="guardar-bar noprint">
       <span id="estado" class="muted small">${S.dirty ? "Cambios sin guardar" : existente ? "Guardado" : "Nueva agenda"}</span>
       ${existente ? `<button class="icon danger" id="eliminar" title="Eliminar agenda"><span class="ms">delete</span></button><a class="btn ghost" href="#/ver/${fecha}"><span class="ms">print</span>Ver</a>` : ""}
@@ -787,6 +792,18 @@ async function vistaEditor(fecha) {
     if (t.dataset.f) {
       setPath(draft, t.dataset.f, t.value);
       marcar();
+      const m = t.dataset.f.match(/^(.+)\.(numero|titulo)$/);
+      const caja = m && main.querySelector(`[data-himno="${m[1]}"]`);
+      if (caja && catalogo.lista.length) {
+        const h = m[2] === "numero" ? catalogo.porNumero.get(t.value.trim()) : catalogo.porTitulo.get(norm(t.value));
+        const otro = m[2] === "numero" ? "titulo" : "numero";
+        if (h) {
+          const valor = otro === "titulo" ? h.t : String(h.n);
+          setPath(draft, `${m[1]}.${otro}`, valor);
+          caja.querySelector(`[data-f="${m[1]}.${otro}"]`).value = valor;
+        }
+        main.querySelector(`[data-libro="${m[1]}"]`).textContent = libroDe(getPath(draft, `${m[1]}.numero`));
+      }
     }
   };
   main.onchange = (e) => {
@@ -925,7 +942,7 @@ async function vistaParticipantes() {
     <div class="bar"><h1>Participantes <small class="muted">(${lista.length})</small></h1>
       ${puedeEditar ? `<div class="row">
         <button class="btn" id="agregar"><span class="ms">person_add</span>Agregar</button>
-        <label class="btn ghost"><span class="ms">upload_file</span>Importar CSV<input type="file" id="archivo" accept=".csv,.txt,text/csv" hidden></label>
+        <label class="btn ghost"><span class="ms">upload_file</span>Importar Excel o CSV<input type="file" id="archivo" accept=".xlsx,.xls,.csv,.txt" hidden></label>
       </div>` : ""}</div>
     <div class="row filtros">
       <input type="search" id="q" placeholder="Buscar por nombre">
@@ -989,7 +1006,7 @@ async function vistaParticipantes() {
   };
 
   const importar = async (archivo) => {
-    const filas = parseCSV(await archivo.text());
+    const filas = await leerHojaCalculo(archivo);
     if (!filas.length) return toast("El archivo está vacío.", true);
     const cab = filas[0].map(norm);
     const col = (...nombres) => cab.findIndex((c) => nombres.some((n) => c.startsWith(n)));
@@ -1072,6 +1089,30 @@ async function vistaParticipantes() {
     };
   }
   pintar();
+}
+
+// Lee la primera hoja de un Excel (o la hoja "Himnos" si existe) o un CSV, como filas de celdas
+async function leerHojaCalculo(archivo) {
+  if (/\.(csv|txt)$/i.test(archivo.name)) return parseCSV(await archivo.text());
+  const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+  const libro = XLSX.read(await archivo.arrayBuffer());
+  const hoja = libro.Sheets[libro.SheetNames.includes("Himnos") ? "Himnos" : libro.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(hoja, { header: 1, raw: false, defval: "" }).filter((f) => f.some((x) => String(x).trim()));
+}
+
+// Catálogo global de himnos (un solo documento, compartido por todos los barrios)
+async function cargarHimnos() {
+  if (!S.himnos) {
+    const doc = await store.get("catalogo/himnos").catch(() => null);
+    const lista = doc?.lista || [];
+    S.himnos = {
+      lista,
+      actualizadoEn: doc?.actualizadoEn || "",
+      porNumero: new Map(lista.map((h) => [String(h.n), h])),
+      porTitulo: new Map(lista.map((h) => [norm(h.t), h])),
+    };
+  }
+  return S.himnos;
 }
 
 function parseCSV(texto) {
@@ -1224,7 +1265,7 @@ async function vistaRoles() {
 
 async function vistaBarrios() {
   const main = shell("barrios");
-  const barrios = await store.list("barrios");
+  const [barrios, himnos] = await Promise.all([store.list("barrios"), cargarHimnos()]);
   const orden = { pendiente: 0, aprobado: 1, rechazado: 2 };
   barrios.sort((a, b) => (orden[a.estado] ?? 0) - (orden[b.estado] ?? 0) || (b.creadoEn || "").localeCompare(a.creadoEn || ""));
   const etiqueta = { pendiente: ["pend", "Pendiente"], aprobado: ["admin", "Aprobado"], rechazado: ["", "Rechazado"] };
@@ -1245,7 +1286,71 @@ async function vistaBarrios() {
           ${estado !== "aprobado" ? `<button class="btn sm" data-estado="aprobado" data-id="${b.id}"><span class="ms">check</span>Aprobar</button>` : ""}
           ${estado !== "rechazado" && b.id !== S.barrio.id ? `<button class="btn danger sm" data-estado="rechazado" data-id="${b.id}">${estado === "aprobado" ? "Suspender" : "Rechazar"}</button>` : ""}
         </div></div>`;
-    }).join("") || `<p class="muted">No hay barrios registrados.</p>`}`;
+    }).join("") || `<p class="muted">No hay barrios registrados.</p>`}
+    <h3>Catálogo de himnos</h3>
+    <div class="card">
+      <p style="margin-top:0">${himnos.lista.length
+        ? `<strong>${himnos.lista.length} himnos</strong> disponibles para todos los barrios${himnos.actualizadoEn ? ` · actualizado ${fechaCorta(himnos.actualizadoEn.slice(0, 10))}` : ""}.`
+        : "El catálogo está vacío. Cárgalo para que el título se complete al escribir el número del himno."}</p>
+      <div class="row">
+        <button class="btn" id="himnosIncluido"><span class="ms">library_music</span>Cargar catálogo incluido</button>
+        <label class="btn ghost"><span class="ms">upload_file</span>Importar Excel o CSV<input type="file" id="himnosArchivo" accept=".xlsx,.xls,.csv,.txt" hidden></label>
+        <a class="btn text" href="datos/himnos.xlsx" download><span class="ms">download</span>Descargar Excel</a>
+      </div>
+      <p class="muted small">El Excel incluido trae los himnos en español del himnario de 1992 (1–209) y los publicados de
+        "Himnos: Para el hogar y la Iglesia" (1001 en adelante). Cuando salgan himnos nuevos, agrégalos al Excel e impórtalo.
+        Al importar se reemplaza el catálogo completo.</p>
+    </div>
+    <dialog id="dlgHimnos"></dialog>`;
+
+  const importarHimnos = async (archivo) => {
+    const filas = await leerHojaCalculo(archivo);
+    const cab = (filas[0] || []).map(norm);
+    const col = (...n) => cab.findIndex((c) => n.some((x) => c.startsWith(x)));
+    const i = { n: col("numero", "num", "no", "#"), t: col("titulo", "title", "nombre"), h: col("himnario", "libro"), s: col("seccion", "tema") };
+    if (i.n < 0 || i.t < 0) return toast("El archivo debe tener las columnas Número y Título.", true);
+    const porNumero = new Map();
+    filas.slice(1).forEach((r) => {
+      const n = parseInt(String(r[i.n] ?? "").trim(), 10);
+      const t = String(r[i.t] ?? "").trim().slice(0, 120);
+      if (n > 0 && n < 100000 && t) porNumero.set(n, { n, t, h: String(r[i.h] ?? "").trim().slice(0, 60), s: String(r[i.s] ?? "").trim().slice(0, 60) });
+    });
+    const lista = [...porNumero.values()].sort((a, b) => a.n - b.n);
+    if (!lista.length) return toast("No se encontraron himnos en el archivo.", true);
+    const porLibro = {};
+    lista.forEach((h) => (porLibro[h.h || "Sin himnario"] = (porLibro[h.h || "Sin himnario"] || 0) + 1));
+    const dlg = document.getElementById("dlgHimnos");
+    dlg.innerHTML = `<form method="dialog" class="stack">
+      <h2>Importar himnos</h2>
+      <p>Se encontraron <strong>${lista.length}</strong> himnos:</p>
+      <ul class="small">${Object.entries(porLibro).map(([l, c]) => `<li>${esc(l)}: ${c}</li>`).join("")}</ul>
+      <p class="muted small">Reemplazará el catálogo actual${himnos.lista.length ? ` (${himnos.lista.length} himnos)` : ""}.</p>
+      <div class="row end"><button type="button" class="btn ghost" id="cancelarHimnos">Cancelar</button><button class="btn" id="okHimnos">Importar</button></div>
+    </form>`;
+    dlg.showModal();
+    document.getElementById("cancelarHimnos").onclick = () => dlg.close();
+    document.getElementById("okHimnos").onclick = (e) => {
+      e.preventDefault();
+      e.target.disabled = true;
+      intentar(async () => {
+        await store.set("catalogo/himnos", { lista, actualizadoEn: now(), actualizadoPor: S.user.email || "" });
+        S.himnos = null;
+        dlg.close();
+        toast(`${lista.length} himnos importados`);
+        vistaBarrios();
+      });
+    };
+  };
+  document.getElementById("himnosArchivo").onchange = (e) => {
+    if (e.target.files[0]) intentar(() => importarHimnos(e.target.files[0]));
+    e.target.value = "";
+  };
+  document.getElementById("himnosIncluido").onclick = () =>
+    intentar(async () => {
+      const r = await fetch("datos/himnos.xlsx", { cache: "no-cache" });
+      if (!r.ok) throw new Error("No se pudo descargar el catálogo incluido.");
+      await importarHimnos(new File([await r.blob()], "himnos.xlsx"));
+    });
 
   main.onclick = (e) => {
     const b = e.target.closest("[data-estado]");
