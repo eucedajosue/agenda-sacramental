@@ -1041,7 +1041,7 @@ async function vistaParticipantes() {
       return;
     }
     $lista.innerHTML = vis.map((p) => `
-      <div class="card persona ${p.activo === false ? "inactivo" : ""}">
+      <div class="card persona ${p.activo === false ? "inactivo" : ""}" data-id="${p.id}">
         <div><strong>${esc(p.nombre)}</strong>${p.activo === false ? ` <span class="pill">Inactivo</span>` : ""}
           <p class="muted small">${esc(p.organizacion || "Sin organización")}
           ${verTel && tel[p.id] ? ` · <a href="tel:${esc(tel[p.id])}">${esc(tel[p.id])}</a>` : ""}</p>
@@ -1168,7 +1168,19 @@ async function vistaParticipantes() {
           p.activo = activo;
           S.participantes = null;
           document.getElementById("tituloParticipantes").innerHTML = titulo();
-          pintar();
+          const tarjeta = b.closest(".persona");
+          const sale = (filtro.estado === "activos" && !activo) || (filtro.estado === "inactivos" && activo);
+          if (sale && tarjeta) {
+            // El filtro ya no lo incluye: se desvanece y se cierra el espacio antes de redibujar
+            tarjeta.style.height = `${tarjeta.offsetHeight}px`;
+            void tarjeta.offsetHeight;
+            tarjeta.classList.add("saliendo");
+            await new Promise((r) => setTimeout(r, 380));
+            pintar();
+          } else {
+            pintar();
+            $lista.querySelector(`[data-id="${p.id}"]`)?.classList.add("destello");
+          }
           toast(activo ? `${p.nombre} reactivado` : `${p.nombre} desactivado`);
         });
       }

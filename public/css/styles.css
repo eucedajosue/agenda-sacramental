@@ -267,6 +267,14 @@ main { max-width: 860px; margin: 0 auto; padding: 1rem 16px calc(9rem + env(safe
 .pill.pend { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .pill.admin { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .persona.inactivo > div:first-child { opacity: .55; }
+/* Animaciones al desactivar o reactivar */
+.persona.saliendo {
+  height: 0 !important; padding-top: 0; padding-bottom: 0; margin-bottom: 0; border-width: 0;
+  opacity: 0; transform: translateX(28px); overflow: hidden;
+  transition: height .32s ease .06s, padding .32s ease .06s, margin .32s ease .06s, border-width .32s ease .06s, opacity .22s ease, transform .22s ease;
+}
+.persona.destello { animation: destello 1.2s ease-out; }
+@keyframes destello { from { background: var(--accent-soft); } }
 .persona.pendiente { background: color-mix(in srgb, var(--warn-soft) 60%, var(--surface)); }
 .filtros { margin-bottom: 1rem; }
 .filtros select { flex: 1; min-width: 160px; }
