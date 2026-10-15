@@ -11,7 +11,7 @@ public/               ← la app (lo que se publica)
   css/styles.css
   js/app.js           ← pantallas y lógica
   js/store.js         ← conexión a Firebase (o modo demostración)
-  js/firebase-config.js  ← AQUÍ pegas la configuración de tu proyecto
+  js/firebase-config.example.js  ← plantilla; cópiala como firebase-config.js (no se sube a GitHub)
 firestore.rules       ← reglas de seguridad (roles y permisos)
 firebase.json
 ejemplo-participantes.csv
@@ -19,7 +19,8 @@ ejemplo-participantes.csv
 
 ## Probarla en tu computadora (modo demostración)
 
-Mientras `firebase-config.js` tenga `TU_API_KEY`, la app funciona sin internet, con los datos guardados solo en tu navegador.
+Copia `public/js/firebase-config.example.js` como `public/js/firebase-config.js`. Mientras tenga `TU_API_KEY`,
+la app funciona sin internet, con los datos guardados solo en tu navegador.
 
 ```bash
 python -m http.server 8123 --directory public
@@ -33,7 +34,9 @@ Luego abre http://localhost:8123
 2. **Authentication** → Comenzar → Método de acceso → habilita **Google**.
 3. **Firestore Database** → Crear base de datos → modo producción → elige una región cercana.
 4. **Configuración del proyecto** (ícono de engranaje) → Tus apps → **Web** (`</>`) → registra la app.
-   Copia el objeto `firebaseConfig` y pégalo en `public/js/firebase-config.js`.
+   Copia el objeto `firebaseConfig` y pégalo en `public/js/firebase-config.js` (creado a partir de
+   `firebase-config.example.js`). Ese archivo y `.firebaserc` están en `.gitignore`: la configuración de tu
+   proyecto queda solo en tu computadora y en el hosting, no en GitHub.
 5. Instala Node.js (https://nodejs.org) y luego, en esta carpeta:
 
 ```bash
@@ -63,7 +66,7 @@ Mientras tanto no puede guardar agendas, participantes ni usuarios, y nadie pued
 
 - Los superadministradores se definen por correo en **dos lugares** que deben coincidir:
   `esSuperadmin()` en `firestore.rules` (donde se aplica de verdad) y `SUPERADMINS` en
-  `public/js/firebase-config.js` (para mostrar la pestaña en la app).
+  `public/js/firebase-config.js` (y en la plantilla `firebase-config.example.js`) (para mostrar la pestaña en la app).
 - El superadministrador ve la pestaña **Barrios**, donde aprueba, rechaza o suspende barrios.
 - Los barrios que registra un superadministrador quedan aprobados de inmediato.
 

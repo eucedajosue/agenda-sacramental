@@ -4,3 +4,7 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Configuración del proyecto de Firebase (solo local; ver firebase-config.example.js)
+public/js/firebase-config.js
+.firebaserc
