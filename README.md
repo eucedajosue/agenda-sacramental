@@ -99,7 +99,8 @@ sin borrar su historial. Aparece atenuado con la etiqueta "Inactivo" y se puede 
 El filtro de estado permite ver solo activos o solo inactivos. Al editar o reimportar, se conserva su estado.
 
 **Eliminar** un participante solo lo pueden hacer los administradores del barrio (también lo exigen las reglas de
-Firestore) y siempre pide confirmación. Se recomienda desactivar en lugar de eliminar.
+Firestore) y siempre pide confirmación. No se puede eliminar a quien tenga historial, es decir, a quien aparezca en alguna
+agenda (preside, dirige, oraciones, asuntos, testimonios o discursos); en ese caso se ofrece desactivarlo.
 
 ## App Check (opcional, protección extra)
 

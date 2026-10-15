@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.5";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.5";
+import { store, DEMO } from "./store.js?v=2026.10.15.6";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.6";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.5";
+const VERSION = "2026.10.15.6";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -994,6 +994,17 @@ async function vistaParticipantes() {
   ]);
   const tel = Object.fromEntries(contactos.map((c) => [c.id, c.telefono]));
   const hist = historial(reuniones);
+  // Agendas en las que aparece cada persona (en cualquier parte): quien tenga historial no se puede eliminar
+  const agendasDe = {};
+  reuniones.forEach((r) => {
+    const personas = [
+      r.preside, r.dirige, r.primeraOracion, r.ultimaOracion,
+      ...(r.asuntos || []).map((a) => a.persona),
+      ...(r.tipo === "testimonios" ? (r.testimonios || []).map((t) => t.persona) : []),
+      ...discursantesDe(r).map((d) => d.persona),
+    ];
+    new Set(personas.filter((x) => x?.id).map((x) => x.id)).forEach((id) => (agendasDe[id] ??= []).push(r.id));
+  });
   const dato = (etiqueta, valor, vacio) => `<span class="${vacio ? "muted" : ""}"><span class="muted">${etiqueta}:</span> ${valor}</span>`;
   const historialDe = (id) => {
     const u = hist.ultima[id];
@@ -1056,9 +1067,24 @@ async function vistaParticipantes() {
 
   // Eliminar es solo para administradores y siempre pide confirmación
   const confirmarEliminar = (p, tarjeta) => {
-    dlg.innerHTML = `<form method="dialog" class="stack">
+    const agendas = (agendasDe[p.id] || []).sort();
+    if (agendas.length) {
+      // Tiene historial: no se elimina, para no perder el registro de sus participaciones
+      dlg.innerHTML = `<form method="dialog" class="stack">
+        <h2>No se puede eliminar a ${esc(p.nombre)}</h2>
+        <p>Tiene historial: aparece en <strong>${agendas.length} agenda${agendas.length > 1 ? "s" : ""}</strong>
+          (la más reciente del ${esc(fechaLarga(agendas.at(-1)))}). Para conservar ese registro no se puede eliminar.</p>
+        <p class="muted small">${p.activo !== false
+          ? "Si ya no debe aparecer al elegir participantes, desactívalo."
+          : "Ya está desactivado, así que no aparece al elegir participantes."}</p>
+        <div class="row end">
+          <button type="button" class="btn ghost" id="cancelarEliminar">Cerrar</button>
+          ${p.activo !== false ? `<button type="button" class="btn" id="mejorDesactivar"><span class="ms">person_off</span>Desactivar</button>` : ""}
+        </div>
+      </form>`;
+    } else dlg.innerHTML = `<form method="dialog" class="stack">
       <h2>¿Eliminar a ${esc(p.nombre)}?</h2>
-      <p>Se borrarán sus datos y su teléfono. Las agendas donde ya aparece conservarán su nombre.</p>
+      <p>No aparece en ninguna agenda. Se borrarán sus datos y su teléfono.</p>
       <p class="aviso small"><strong>Esta acción no se puede deshacer.</strong> Si la persona solo dejó de asistir o se mudó,
         es mejor <strong>Desactivarla</strong>: deja de aparecer en las agendas y conserva su historial.</p>
       <div class="row end">
@@ -1077,8 +1103,9 @@ async function vistaParticipantes() {
         boton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       }
     });
-    document.getElementById("okEliminar").onclick = (e) => {
-      e.target.disabled = true;
+    const ok = document.getElementById("okEliminar");
+    if (ok) ok.onclick = () => {
+      ok.disabled = true;
       intentar(async () => {
         await store.del(`${B()}/participantes/${p.id}`);
         await store.del(`${B()}/contactos/${p.id}`);
