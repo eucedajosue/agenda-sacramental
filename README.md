@@ -109,7 +109,7 @@ suspensión, límites de tamaño, permisos y catálogo de himnos). El emulador r
 
 ## Importar participantes
 
-Desde Excel: **Archivo → Guardar como → CSV**. Columnas: `Nombre, Organización, Edad, Teléfono`
+Desde Excel: **Archivo → Guardar como → CSV**. Columnas: `Nombre, Organización, Teléfono`
 (ver `ejemplo-participantes.csv`). Si un nombre ya existe, se actualiza en lugar de duplicarse.
 
 ## Permisos disponibles

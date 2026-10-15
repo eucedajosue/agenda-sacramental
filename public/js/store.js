@@ -1,6 +1,6 @@
 // Capa de datos: la misma interfaz funciona con Firebase (producción)
 // o con localStorage (modo demostración).
-import { firebaseConfig, APP_CHECK_SITE_KEY } from "./firebase-config.js?v=2026.10.15";
+import { firebaseConfig, APP_CHECK_SITE_KEY } from "./firebase-config.js?v=2026.10.15.2";
 
 export const DEMO = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("TU_");
 

@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15";
+import { store, DEMO } from "./store.js?v=2026.10.15.2";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.2";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15";
+const VERSION = "2026.10.15.2";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -699,8 +699,7 @@ async function vistaEditor(fecha) {
         <label>Nombre<input name="nombre" required maxlength="100" value="${esc(nombre)}"></label>
         <label>Organización<input name="organizacion" list="selOrgs" maxlength="60"></label>
         <datalist id="selOrgs">${ORGANIZACIONES.map((o) => `<option value="${esc(o)}">`).join("")}</datalist>
-        <div class="dos"><label>Edad<input name="edad" type="number" min="0" max="120"></label>
-          <label>Teléfono<input name="telefono" type="tel" maxlength="30"></label></div>
+        <label>Teléfono<input name="telefono" type="tel" maxlength="30"></label>
         <div class="row end"><button type="button" class="btn text" id="selVolver">Volver</button><button class="btn">Guardar y seleccionar</button></div>
       </form>`;
       dlg.querySelector("#selVolver").onclick = () => vistaLista(nombre);
@@ -708,7 +707,7 @@ async function vistaEditor(fecha) {
       dlg.querySelector("#selForm").onsubmit = (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
-        const datos = { nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), edad: f.get("edad") ? Number(f.get("edad")) : null };
+        const datos = { nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim() };
         const repetido = participantes.find((p) => norm(p.nombre) === norm(datos.nombre));
         if (repetido && !confirm(`Ya existe "${repetido.nombre}". ¿Registrar otro participante con el mismo nombre?`)) return;
         intentar(async () => {
@@ -976,12 +975,12 @@ async function vistaAgendaImpresa(fecha) {
 // ───────────────────────── Participantes ─────────────────────────
 
 const EJEMPLO = [
-  ["Juan Pérez", "Obispado", 45, "9999-0001"], ["Carlos Martínez", "Obispado", 41, "9999-0002"],
-  ["Luis Hernández", "Obispado", 38, "9999-0003"], ["María López", "Sociedad de Socorro", 36, "9999-0004"],
-  ["Ana García", "Sociedad de Socorro", 52, "9999-0005"], ["José Ramírez", "Cuórum de Élderes", 29, "9999-0006"],
-  ["Pedro Flores", "Cuórum de Élderes", 33, "9999-0007"], ["Daniel Castro", "Hombres Jóvenes", 16, "9999-0008"],
-  ["Sofía Mejía", "Mujeres Jóvenes", 15, "9999-0009"], ["Lucía Torres", "Primaria", 31, "9999-0010"],
-  ["Andrés Reyes", "Escuela Dominical", 47, "9999-0011"], ["Élder Smith", "Misioneros", 20, ""],
+  ["Juan Pérez", "Obispado", "9999-0001"], ["Carlos Martínez", "Obispado", "9999-0002"],
+  ["Luis Hernández", "Obispado", "9999-0003"], ["María López", "Sociedad de Socorro", "9999-0004"],
+  ["Ana García", "Sociedad de Socorro", "9999-0005"], ["José Ramírez", "Cuórum de Élderes", "9999-0006"],
+  ["Pedro Flores", "Cuórum de Élderes", "9999-0007"], ["Daniel Castro", "Hombres Jóvenes", "9999-0008"],
+  ["Sofía Mejía", "Mujeres Jóvenes", "9999-0009"], ["Lucía Torres", "Primaria", "9999-0010"],
+  ["Andrés Reyes", "Escuela Dominical", "9999-0011"], ["Élder Smith", "Misioneros", ""],
 ];
 
 async function vistaParticipantes() {
@@ -1028,14 +1027,14 @@ async function vistaParticipantes() {
     const vis = lista.filter((p) => (!q || norm(p.nombre).includes(q)) && (!filtro.org || p.organizacion === filtro.org));
     if (!lista.length) {
       $lista.innerHTML = `<div class="card center"><p>Aún no hay participantes.</p>
-        ${puedeEditar ? `<p class="muted small">Agrégalos uno por uno o importa un archivo CSV con las columnas: <code>Nombre, Organización, Edad, Teléfono</code>.</p>` : ""}
+        ${puedeEditar ? `<p class="muted small">Agrégalos uno por uno o importa un archivo CSV con las columnas: <code>Nombre, Organización, Teléfono</code>.</p>` : ""}
         ${DEMO && puedeEditar ? `<button class="btn ghost" id="ejemplo">Cargar participantes de ejemplo</button>` : ""}</div>`;
       return;
     }
     $lista.innerHTML = vis.map((p) => `
       <div class="card persona">
         <div><strong>${esc(p.nombre)}</strong>
-          <p class="muted small">${[esc(p.organizacion), p.edad ? `${esc(p.edad)} años` : ""].filter(Boolean).join(" · ")}
+          <p class="muted small">${esc(p.organizacion || "Sin organización")}
           ${verTel && tel[p.id] ? ` · <a href="tel:${esc(tel[p.id])}">${esc(tel[p.id])}</a>` : ""}</p>
           ${S.perms.verAgenda ? historialDe(p.id) : ""}
         </div>
@@ -1051,8 +1050,7 @@ async function vistaParticipantes() {
       <h2>${nuevo ? "Agregar" : "Editar"} participante</h2>
       <label>Nombre<input name="nombre" required value="${esc(p.nombre)}"></label>
       <label>Organización<input name="organizacion" list="orgs" value="${esc(p.organizacion)}"></label>
-      <div class="dos"><label>Edad<input name="edad" type="number" min="0" max="120" value="${esc(p.edad)}"></label>
-      ${mostrarTel ? `<label>Teléfono<input name="telefono" type="tel" value="${esc(tel[p.id])}"></label>` : ""}</div>
+      ${mostrarTel ? `<label>Teléfono<input name="telefono" type="tel" value="${esc(tel[p.id])}"></label>` : ""}
       <div class="row end"><button type="button" class="btn ghost" id="cancelar">Cancelar</button><button class="btn">Guardar</button></div>
     </form>`;
     dlg.showModal();
@@ -1063,7 +1061,7 @@ async function vistaParticipantes() {
       intentar(async () => {
         const id = p.id || store.newId(`${B()}/participantes`);
         await store.set(`${B()}/participantes/${id}`, {
-          nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), edad: f.get("edad") ? Number(f.get("edad")) : null,
+          nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(),
         });
         if (mostrarTel) await store.set(`${B()}/contactos/${id}`, { telefono: f.get("telefono").trim() });
         dlg.close();
@@ -1078,17 +1076,17 @@ async function vistaParticipantes() {
     if (!filas.length) return toast("El archivo está vacío.", true);
     const cab = filas[0].map(norm);
     const col = (...nombres) => cab.findIndex((c) => nombres.some((n) => c.startsWith(n)));
-    let idx = { nombre: col("nombre", "name"), organizacion: col("organizacion", "org"), edad: col("edad", "age"), telefono: col("telefono", "tel", "celular", "phone", "movil") };
+    let idx = { nombre: col("nombre", "name"), organizacion: col("organizacion", "org"), telefono: col("telefono", "tel", "celular", "phone", "movil") };
     let datos = filas.slice(1);
     if (idx.nombre < 0) {
-      idx = { nombre: 0, organizacion: 1, edad: 2, telefono: 3 };
+      idx = { nombre: 0, organizacion: 1, telefono: 2 };
       datos = filas;
     }
     const porNombre = Object.fromEntries(lista.map((p) => [norm(p.nombre), p.id]));
     const val = (r, i) => (i >= 0 ? (r[i] || "").trim() : "");
     const items = datos.map((r) => ({
       nombre: val(r, idx.nombre), organizacion: val(r, idx.organizacion),
-      edad: parseInt(val(r, idx.edad)) || null, telefono: val(r, idx.telefono),
+      telefono: val(r, idx.telefono),
     })).filter((x) => x.nombre);
     const existentes = items.filter((x) => porNombre[norm(x.nombre)]).length;
 
@@ -1096,7 +1094,7 @@ async function vistaParticipantes() {
       <h2>Importar participantes</h2>
       <p>Se encontraron <strong>${items.length}</strong> participantes en el archivo.
       ${existentes ? `<br>${existentes} ya existen (mismo nombre) y se actualizarán.` : ""}</p>
-      <div class="preview">${items.slice(0, 8).map((x) => `<div>${esc(x.nombre)} <span class="muted">· ${esc(x.organizacion)} · ${x.edad ?? ""}</span></div>`).join("")}
+      <div class="preview">${items.slice(0, 8).map((x) => `<div>${esc(x.nombre)} <span class="muted">· ${esc(x.organizacion)}</span></div>`).join("")}
       ${items.length > 8 ? `<div class="muted">…y ${items.length - 8} más</div>` : ""}</div>
       <div class="row end"><button type="button" class="btn ghost" id="cancelar">Cancelar</button><button class="btn" id="ok">Importar</button></div>
     </form>`;
@@ -1110,7 +1108,7 @@ async function vistaParticipantes() {
         items.forEach((x) => {
           const id = porNombre[norm(x.nombre)] || store.newId(`${B()}/participantes`);
           porNombre[norm(x.nombre)] = id;
-          escrituras.push({ path: `${B()}/participantes/${id}`, data: { nombre: x.nombre, organizacion: x.organizacion, edad: x.edad } });
+          escrituras.push({ path: `${B()}/participantes/${id}`, data: { nombre: x.nombre, organizacion: x.organizacion } });
           if (x.telefono) escrituras.push({ path: `${B()}/contactos/${id}`, data: { telefono: x.telefono } });
         });
         await store.batchSet(escrituras);
@@ -1135,9 +1133,9 @@ async function vistaParticipantes() {
       if (b.id === "ejemplo") {
         return intentar(async () => {
           const filas = [];
-          EJEMPLO.forEach(([nombre, organizacion, edad, telefono]) => {
+          EJEMPLO.forEach(([nombre, organizacion, telefono]) => {
             const id = store.newId();
-            filas.push({ path: `${B()}/participantes/${id}`, data: { nombre, organizacion, edad } });
+            filas.push({ path: `${B()}/participantes/${id}`, data: { nombre, organizacion } });
             filas.push({ path: `${B()}/contactos/${id}`, data: { telefono } });
           });
           await store.batchSet(filas);
