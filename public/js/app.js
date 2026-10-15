@@ -62,19 +62,12 @@ const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toL
 const CAPILLA = `<svg class="capilla" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.2 13.7 7.2H10.3Z"/><rect x="10.3" y="7.2" width="3.4" height="4.3"/><path d="M2 13.6 12 9.8 22 13.6V15H2Z"/><path d="M3.6 15h16.8v7.2H3.6Z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="10.4" y="17.3" width="3.2" height="4.9" rx="1.6"/><rect x="6" y="16.8" width="2" height="3" rx="1"/><rect x="16" y="16.8" width="2" height="3" rx="1"/></svg>`;
 const LOADING = `<div class="loader" role="progressbar" aria-label="Cargando"></div>`;
 
-// Fechas en formato dd/mm/aaaa (f viene como "aaaa-mm-dd")
-function fechaCorta(f) {
-  const [a, m, d] = f.slice(0, 10).split("-");
-  return `${d}/${m}/${a}`;
-}
 function fechaLarga(f) {
-  const dia = new Date(f + "T12:00").toLocaleDateString("es", { weekday: "long" });
-  return `${dia.charAt(0).toUpperCase() + dia.slice(1)}, ${fechaCorta(f)}`;
+  const s = new Date(f + "T12:00").toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
-function fechaHora(iso) {
-  const d = new Date(iso);
-  const dd = (n) => String(n).padStart(2, "0");
-  return `${dd(d.getDate())}/${dd(d.getMonth() + 1)}/${d.getFullYear()} ${dd(d.getHours())}:${dd(d.getMinutes())}`;
+function fechaCorta(f) {
+  return new Date(f + "T12:00").toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
 }
 function hoyISO() {
   const d = new Date();
@@ -760,7 +753,7 @@ async function vistaAgendaImpresa(fecha) {
     <h2>Clausura</h2>
     <div class="par">${linea("Último himno", himno(r.ultimoHimno))}${linea("Última oración", nom(r.ultimaOracion))}</div>
     ${r.notas ? `<div class="notas noprint"><h2>Notas</h2><p>${esc(r.notas).replace(/\n/g, "<br>")}</p></div>` : ""}
-    ${r.actualizadoPor ? `<p class="muted small noprint">Última edición: ${esc(r.actualizadoPor)}, ${fechaHora(r.actualizadoEn)}</p>` : ""}
+    ${r.actualizadoPor ? `<p class="muted small noprint">Última edición: ${esc(r.actualizadoPor)}, ${new Date(r.actualizadoEn).toLocaleString("es")}</p>` : ""}
   </article>`;
 }
 
