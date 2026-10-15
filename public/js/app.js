@@ -596,33 +596,118 @@ async function vistaEditor(fecha) {
   delete draft.id;
   const porId = Object.fromEntries(participantes.map((p) => [p.id, p]));
 
-  // Opciones del selector de participantes, agrupadas por organización
-  const grupos = {};
-  participantes.forEach((p) => (grupos[p.organizacion || "Sin organización"] ??= []).push(p));
-  const opcionesBase = Object.keys(grupos).sort((a, b) => a.localeCompare(b, "es"))
-    .map((g) => `<optgroup label="${esc(g)}">${grupos[g].map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("")}</optgroup>`)
-    .join("");
-
-  // Última vez que cada persona discursó u oró (sin contar esta reunión).
-  // Lista ordenada: primero quienes nunca han participado, luego quienes llevan más tiempo sin hacerlo
+  // ── Selector de participantes: búsqueda por nombre y opción de registrar uno nuevo.
+  // Para discursos y oraciones: primero quienes nunca han participado, luego quienes llevan más tiempo sin hacerlo.
   const ultimo = historial(reuniones, fecha);
-  const opcionesPorFecha = (tipo) => [...participantes]
-    .sort((a, b) => (ultimo[tipo][a.id] || "").localeCompare(ultimo[tipo][b.id] || "") || a.nombre.localeCompare(b.nombre, "es"))
-    .map((p) => {
-      const org = p.organizacion ? ` (${esc(p.organizacion)})` : "";
-      return `<option value="${p.id}">${esc(p.nombre)}${org} — ${cuando(ultimo[tipo][p.id])}</option>`;
-    }).join("");
-  const opciones = { discurso: opcionesPorFecha("discurso"), oracion: opcionesPorFecha("oracion") };
+  const ordenar = (tipo) => [...participantes].sort(tipo
+    ? (a, b) => (ultimo[tipo][a.id] || "").localeCompare(ultimo[tipo][b.id] || "") || a.nombre.localeCompare(b.nombre, "es")
+    : (a, b) => (a.organizacion || "").localeCompare(b.organizacion || "", "es") || a.nombre.localeCompare(b.nombre, "es"));
 
-  const selPersona = (path, tipo) => {
+  const selPersona = (path, tipo = "") => {
     const v = getPath(draft, path);
-    let ops = opciones[tipo] || opcionesBase;
-    if (v?.id) {
-      ops = porId[v.id]
-        ? ops.replace(`value="${v.id}"`, `value="${v.id}" selected`)
-        : `<option value="${esc(v.id)}" selected>${esc(v.nombre)} (eliminado)</option>` + ops;
-    }
-    return `<select data-p="${path}"><option value="">— Seleccionar —</option>${ops}</select>`;
+    const p = v?.id && porId[v.id];
+    const texto = !v?.id
+      ? `<span class="muted">Seleccionar…</span>`
+      : `<span>${esc(v.nombre)}${p?.organizacion ? ` <span class="muted">· ${esc(p.organizacion)}</span>` : ""}${p ? "" : ` <span class="muted">(eliminado)</span>`}</span>`;
+    return `<button type="button" class="picker" data-pick="${path}" data-tipo="${tipo}">${texto}<span class="ms">unfold_more</span></button>`;
+  };
+
+  // Un solo diálogo para buscar, elegir o registrar participantes
+  document.getElementById("dlgPersona")?.remove();
+  const dlg = document.createElement("dialog");
+  dlg.id = "dlgPersona";
+  dlg.className = "selector";
+  document.body.appendChild(dlg);
+  const puedeCrear = S.perms.editarParticipantes;
+
+  const abrirSelector = (path, tipo) => {
+    const actual = getPath(draft, path)?.id;
+    const elegir = (p) => {
+      setPath(draft, path, p ? { id: p.id, nombre: p.nombre, organizacion: p.organizacion || "" } : null);
+      dlg.close();
+      marcar();
+      render();
+    };
+
+    const vistaLista = (q = "") => {
+      dlg.innerHTML = `
+        <div class="sel-head">
+          <input type="search" id="selBuscar" placeholder="Buscar por nombre u organización" autocomplete="off" value="${esc(q)}">
+          <button type="button" class="icon" id="selCerrar" title="Cerrar"><span class="ms">close</span></button>
+        </div>
+        <div class="sel-lista" id="selLista"></div>
+        <div class="sel-pie">
+          ${actual ? `<button type="button" class="btn text sm" id="selQuitar">Quitar selección</button>` : "<span></span>"}
+          ${puedeCrear ? `<button type="button" class="btn ghost sm" id="selNuevo"><span class="ms">person_add</span>Nuevo participante</button>` : ""}
+        </div>`;
+      const $buscar = dlg.querySelector("#selBuscar");
+      const $lista = dlg.querySelector("#selLista");
+      let visibles = [];
+      const pintar = () => {
+        const t = norm($buscar.value);
+        const todos = ordenar(tipo).filter((p) => !t || norm(p.nombre).includes(t) || norm(p.organizacion).includes(t));
+        visibles = todos.slice(0, 80);
+        $lista.innerHTML = visibles.map((p, i) => `
+          <button type="button" class="sel-op ${p.id === actual ? "actual" : ""}" data-i="${i}">
+            <span><b>${esc(p.nombre)}</b><small>${esc(p.organizacion || "Sin organización")}</small></span>
+            ${tipo ? `<span class="cuando">${esc(cuando(ultimo[tipo][p.id]))}</span>` : ""}
+          </button>`).join("")
+          + (todos.length > visibles.length ? `<p class="muted small center">Y ${todos.length - visibles.length} más. Escribe para afinar la búsqueda.</p>` : "")
+          + (todos.length ? "" : `<p class="muted center">${participantes.length ? "Nadie coincide con la búsqueda." : "Aún no hay participantes registrados."}</p>`);
+      };
+      $buscar.oninput = pintar;
+      $buscar.onkeydown = (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (visibles[0]) elegir(visibles[0]);
+        }
+      };
+      $lista.onclick = (e) => {
+        const o = e.target.closest("[data-i]");
+        if (o) elegir(visibles[+o.dataset.i]);
+      };
+      dlg.querySelector("#selCerrar").onclick = () => dlg.close();
+      dlg.querySelector("#selQuitar")?.addEventListener("click", () => elegir(null));
+      dlg.querySelector("#selNuevo")?.addEventListener("click", () => vistaNuevo($buscar.value.trim()));
+      pintar();
+      $buscar.focus();
+    };
+
+    const vistaNuevo = (nombre) => {
+      dlg.innerHTML = `<form class="stack sel-form" id="selForm">
+        <h2>Nuevo participante</h2>
+        <label>Nombre<input name="nombre" required maxlength="100" value="${esc(nombre)}"></label>
+        <label>Organización<input name="organizacion" list="selOrgs" maxlength="60"></label>
+        <datalist id="selOrgs">${ORGANIZACIONES.map((o) => `<option value="${esc(o)}">`).join("")}</datalist>
+        <div class="dos"><label>Edad<input name="edad" type="number" min="0" max="120"></label>
+          <label>Teléfono<input name="telefono" type="tel" maxlength="30"></label></div>
+        <div class="row end"><button type="button" class="btn text" id="selVolver">Volver</button><button class="btn">Guardar y seleccionar</button></div>
+      </form>`;
+      dlg.querySelector("#selVolver").onclick = () => vistaLista(nombre);
+      dlg.querySelector('[name="nombre"]').focus();
+      dlg.querySelector("#selForm").onsubmit = (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target);
+        const datos = { nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), edad: f.get("edad") ? Number(f.get("edad")) : null };
+        const repetido = participantes.find((p) => norm(p.nombre) === norm(datos.nombre));
+        if (repetido && !confirm(`Ya existe "${repetido.nombre}". ¿Registrar otro participante con el mismo nombre?`)) return;
+        intentar(async () => {
+          const id = store.newId(`${B()}/participantes`);
+          await store.set(`${B()}/participantes/${id}`, datos);
+          const tel = f.get("telefono").trim();
+          if (tel) await store.set(`${B()}/contactos/${id}`, { telefono: tel });
+          const p = { id, ...datos };
+          participantes.push(p);
+          porId[id] = p;
+          S.participantes = null;
+          toast(`${p.nombre} registrado`);
+          elegir(p);
+        });
+      };
+    };
+
+    vistaLista();
+    dlg.showModal();
   };
   const txt = (path, ph = "", type = "text") =>
     `<input type="${type}" data-f="${path}" value="${esc(getPath(draft, path))}" placeholder="${ph}">`;
@@ -648,7 +733,7 @@ async function vistaEditor(fecha) {
     let n = 0;
     main.innerHTML = `
     <div class="bar"><div><a href="#/agenda" class="btn text"><span class="ms">arrow_back</span>Agendas</a><h1 class="cap">${esc(fechaLarga(fecha))}</h1></div></div>
-    ${participantes.length ? "" : `<p class="aviso">Aún no hay participantes registrados. <a href="#/participantes">Agrégalos o impórtalos</a> para poder seleccionarlos.</p>`}
+    ${participantes.length ? "" : `<p class="aviso">Aún no hay participantes registrados. Puedes registrarlos desde cada selector con "Nuevo participante", o <a href="#/participantes">importarlos todos</a>.</p>`}
     ${seccion(++n, "Presidencia", `
       <div class="dos">${persona("preside", "Preside")}${persona("dirige", "Dirige")}</div>
       <label>Líderes visitantes</label>
@@ -691,11 +776,7 @@ async function vistaEditor(fecha) {
   };
   main.onchange = (e) => {
     const t = e.target;
-    if (t.dataset.p) {
-      const p = porId[t.value];
-      setPath(draft, t.dataset.p, p ? { id: p.id, nombre: p.nombre, organizacion: p.organizacion || "" } : null);
-      marcar();
-    } else if (t.name === "tipo") {
+    if (t.name === "tipo") {
       draft.tipo = t.value;
       marcar();
       render();
@@ -704,6 +785,7 @@ async function vistaEditor(fecha) {
   main.onclick = async (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    if (b.dataset.pick) return abrirSelector(b.dataset.pick, b.dataset.tipo);
     const ref = b.dataset.add || b.dataset.del || b.dataset.up;
     if (b.dataset.add) draft[ref].push(clone(PLANTILLAS[ref]));
     if (b.dataset.del || b.dataset.up) {
