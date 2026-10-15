@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.4";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.4";
+import { store, DEMO } from "./store.js?v=2026.10.15.5";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.5";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.4";
+const VERSION = "2026.10.15.5";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -1050,8 +1050,52 @@ async function vistaParticipantes() {
             ? `<button class="btn sm" data-activar="${p.id}"><span class="ms">person_check</span>Activar</button>`
             : `<button class="btn text sm" data-desactivar="${p.id}" title="No aparecerá al elegir participantes"><span class="ms">person_off</span>Desactivar</button>`}
           <button class="btn ghost sm" data-editar="${p.id}">Editar</button>
-          <button class="icon danger" data-borrar="${p.id}" title="Eliminar"><span class="ms">delete</span></button></div>` : ""}
+          ${S.esAdmin ? `<button class="icon danger" data-borrar="${p.id}" title="Eliminar (solo administradores)"><span class="ms">delete</span></button>` : ""}</div>` : ""}
       </div>`).join("") || `<p class="muted">Nadie coincide con la búsqueda.</p>`;
+  };
+
+  // Eliminar es solo para administradores y siempre pide confirmación
+  const confirmarEliminar = (p, tarjeta) => {
+    dlg.innerHTML = `<form method="dialog" class="stack">
+      <h2>¿Eliminar a ${esc(p.nombre)}?</h2>
+      <p>Se borrarán sus datos y su teléfono. Las agendas donde ya aparece conservarán su nombre.</p>
+      <p class="aviso small"><strong>Esta acción no se puede deshacer.</strong> Si la persona solo dejó de asistir o se mudó,
+        es mejor <strong>Desactivarla</strong>: deja de aparecer en las agendas y conserva su historial.</p>
+      <div class="row end">
+        <button type="button" class="btn ghost" id="cancelarEliminar">Cancelar</button>
+        ${p.activo !== false ? `<button type="button" class="btn ghost" id="mejorDesactivar"><span class="ms">person_off</span>Desactivar</button>` : ""}
+        <button type="button" class="btn danger-solido" id="okEliminar"><span class="ms">delete</span>Eliminar</button>
+      </div>
+    </form>`;
+    dlg.showModal();
+    document.getElementById("cancelarEliminar").onclick = () => dlg.close();
+    document.getElementById("mejorDesactivar")?.addEventListener("click", () => {
+      dlg.close();
+      const boton = tarjeta?.querySelector("[data-desactivar]");
+      if (boton) {
+        boton.dataset.sinConfirmar = "1";
+        boton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }
+    });
+    document.getElementById("okEliminar").onclick = (e) => {
+      e.target.disabled = true;
+      intentar(async () => {
+        await store.del(`${B()}/participantes/${p.id}`);
+        await store.del(`${B()}/contactos/${p.id}`);
+        dlg.close();
+        lista.splice(lista.indexOf(p), 1);
+        S.participantes = null;
+        document.getElementById("tituloParticipantes").innerHTML = titulo();
+        if (tarjeta) {
+          tarjeta.style.height = `${tarjeta.offsetHeight}px`;
+          void tarjeta.offsetHeight;
+          tarjeta.classList.add("saliendo");
+          await new Promise((r) => setTimeout(r, 380));
+        }
+        pintar();
+        toast(`${p.nombre} eliminado`);
+      });
+    };
   };
 
   const formulario = (p = {}) => {
@@ -1159,7 +1203,7 @@ async function vistaParticipantes() {
       if (b.dataset.editar) formulario(p);
       if (b.dataset.activar || b.dataset.desactivar) {
         const activo = !!b.dataset.activar;
-        if (!activo && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes activarlo de nuevo cuando quieras.`)) return;
+        if (!activo && !b.dataset.sinConfirmar && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes activarlo de nuevo cuando quieras.`)) return;
         intentar(async () => {
           // Se guarda el registro completo (no solo "activo") para descartar campos antiguos, como la edad,
           // que las reglas de seguridad ya no aceptan
@@ -1184,14 +1228,7 @@ async function vistaParticipantes() {
           toast(activo ? `${p.nombre} activado` : `${p.nombre} desactivado`);
         });
       }
-      if (b.dataset.borrar && confirm(`¿Eliminar a ${p.nombre}?`)) {
-        intentar(async () => {
-          await store.del(`${B()}/participantes/${p.id}`);
-          await store.del(`${B()}/contactos/${p.id}`);
-          toast("Participante eliminado");
-          vistaParticipantes();
-        });
-      }
+      if (b.dataset.borrar && S.esAdmin) confirmarEliminar(p, b.closest(".persona"));
     };
   }
   pintar();

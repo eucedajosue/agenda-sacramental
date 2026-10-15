@@ -128,7 +128,8 @@ service cloud.firestore {
           && (!('activo' in datos()) || datos().activo is bool)
           && texto(datos().nombre, 100) && datos().nombre.size() > 0
           && textoOpcional(datos(), 'organizacion', 60);
-        allow delete: if permiso(b, 'editarParticipantes');
+        // Eliminar participantes: solo administradores del barrio
+        allow delete: if aprobado(b) && isAdmin(b);
       }
 
       // Teléfonos separados para que solo los vean los roles con ese permiso.
@@ -137,7 +138,7 @@ service cloud.firestore {
         allow create, update: if permiso(b, 'editarParticipantes')
           && datos().keys().hasOnly(['telefono'])
           && textoOpcional(datos(), 'telefono', 30);
-        allow delete: if permiso(b, 'editarParticipantes');
+        allow delete: if aprobado(b) && isAdmin(b);
       }
 
       match /reuniones/{fecha} {

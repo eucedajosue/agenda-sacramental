@@ -98,6 +98,9 @@ En **Participantes**, el botón **Desactivar** saca a una persona de los selecto
 sin borrar su historial. Aparece atenuado con la etiqueta "Inactivo" y se puede **Activar** de nuevo en cualquier momento.
 El filtro de estado permite ver solo activos o solo inactivos. Al editar o reimportar, se conserva su estado.
 
+**Eliminar** un participante solo lo pueden hacer los administradores del barrio (también lo exigen las reglas de
+Firestore) y siempre pide confirmación. Se recomienda desactivar en lugar de eliminar.
+
 ## App Check (opcional, protección extra)
 
 Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman directo a Firestore).
@@ -113,7 +116,7 @@ Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman 
 
 ## Probar las reglas de seguridad
 
-Las reglas se probaron con el emulador de Firestore (43 casos: barrios pendientes, aprobación,
+Las reglas se probaron con el emulador de Firestore (52 casos: barrios pendientes, aprobación,
 suspensión, límites de tamaño, permisos y catálogo de himnos). El emulador requiere Java 21 con `firebase-tools` actual.
 
 ## Importar participantes
