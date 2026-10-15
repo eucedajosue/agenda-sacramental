@@ -1004,10 +1004,13 @@ async function vistaParticipantes() {
     </p>`;
   };
   const filtro = { q: "", org: "", estado: "activos" };
-  const inactivos = lista.filter((p) => p.activo === false).length;
+  const titulo = () => {
+    const inactivos = lista.filter((p) => p.activo === false).length;
+    return `Participantes <small class="muted">(${lista.length - inactivos}${inactivos ? ` + ${inactivos} inactivo${inactivos > 1 ? "s" : ""}` : ""})</small>`;
+  };
 
   main.innerHTML = `
-    <div class="bar"><h1>Participantes <small class="muted">(${lista.length - inactivos}${inactivos ? ` + ${inactivos} inactivo${inactivos > 1 ? "s" : ""}` : ""})</small></h1>
+    <div class="bar"><h1 id="tituloParticipantes">${titulo()}</h1>
       ${puedeEditar ? `<div class="row">
         <button class="btn" id="agregar"><span class="ms">person_add</span>Agregar</button>
         <label class="btn ghost"><span class="ms">upload_file</span>Importar Excel o CSV<input type="file" id="archivo" accept=".xlsx,.xls,.csv,.txt" hidden></label>
@@ -1161,10 +1164,12 @@ async function vistaParticipantes() {
         if (!activo && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes reactivarlo cuando quieras.`)) return;
         intentar(async () => {
           await store.set(`${B()}/participantes/${p.id}`, { activo }, true);
+          // Se actualiza solo la lista, sin recargar la página ni perder filtros o posición
           p.activo = activo;
           S.participantes = null;
+          document.getElementById("tituloParticipantes").innerHTML = titulo();
+          pintar();
           toast(activo ? `${p.nombre} reactivado` : `${p.nombre} desactivado`);
-          vistaParticipantes();
         });
       }
       if (b.dataset.borrar && confirm(`¿Eliminar a ${p.nombre}?`)) {
