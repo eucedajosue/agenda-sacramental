@@ -1,5 +1,8 @@
-import { store, DEMO } from "./store.js";
-import { SUPERADMINS } from "./firebase-config.js";
+import { store, DEMO } from "./store.js?v=2026.10.15";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15";
+
+// Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
+const VERSION = "2026.10.15";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -187,6 +190,7 @@ function renderLogin() {
       <div class="logo"><span>${CAPILLA}</span></div>
       <h1>Reunión Sacramental</h1>
       <p class="muted">Planificación de la agenda para el obispado</p>
+      <p class="muted small center">Versión ${VERSION}</p>
       ${DEMO
         ? `<form id="demoLogin" class="stack">
             <label>Nombre<input name="name" required placeholder="Ej. Hno. Juan Pérez"></label>
@@ -377,7 +381,7 @@ function shell(activa) {
   <header class="top noprint">
     <span class="brand-icon">${CAPILLA}</span>
     <div class="brand"><strong>${esc(S.barrio.nombre)}</strong><small>${esc(S.barrio.estaca || "")}</small></div>
-    <div class="who"><span>${esc(S.user.name)}<small>${esc(S.esAdmin ? "Administrador" : S.rolNombre)}</small></span>
+    <div class="who"><span>${esc(S.user.name)}<small>${esc(S.esAdmin ? "Administrador" : S.rolNombre)} · v${VERSION}</small></span>
       <span class="avatar">${esc((S.user.name || "?").trim().charAt(0).toUpperCase())}</span>
       <button class="icon" id="salir" title="Salir"><span class="ms">logout</span></button></div>
   </header>
