@@ -114,6 +114,21 @@ async function intentar(fn) {
   }
 }
 
+// Cerrar cualquier diálogo al hacer clic fuera de él (en el fondo oscuro).
+// Se exige que el clic empiece y termine fuera, para no cerrarlo al seleccionar texto arrastrando.
+const clicEnFondo = (e) => {
+  const d = e.target;
+  if (d.tagName !== "DIALOG" || !d.open) return false;
+  const r = d.getBoundingClientRect();
+  return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+};
+let inicioEnFondo = false;
+document.addEventListener("pointerdown", (e) => (inicioEnFondo = clicEnFondo(e)));
+document.addEventListener("click", (e) => {
+  if (inicioEnFondo && clicEnFondo(e)) e.target.close();
+  inicioEnFondo = false;
+});
+
 function demoBanner() {
   return DEMO
     ? `<div class="demo">Modo demostración: los datos se guardan solo en este navegador.</div>`
