@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.2";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.2";
+import { store, DEMO } from "./store.js?v=2026.10.15.3";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.3";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.2";
+const VERSION = "2026.10.15.3";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -665,7 +665,7 @@ async function vistaEditor(fecha) {
       let visibles = [];
       const pintar = () => {
         const t = norm($buscar.value);
-        const todos = ordenar(tipo).filter((p) => !t || norm(p.nombre).includes(t) || norm(p.organizacion).includes(t));
+        const todos = ordenar(tipo).filter((p) => p.activo !== false && (!t || norm(p.nombre).includes(t) || norm(p.organizacion).includes(t)));
         visibles = todos.slice(0, 80);
         $lista.innerHTML = visibles.map((p, i) => `
           <button type="button" class="sel-op ${p.id === actual ? "actual" : ""}" data-i="${i}">
@@ -707,7 +707,7 @@ async function vistaEditor(fecha) {
       dlg.querySelector("#selForm").onsubmit = (e) => {
         e.preventDefault();
         const f = new FormData(e.target);
-        const datos = { nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim() };
+        const datos = { nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), activo: true };
         const repetido = participantes.find((p) => norm(p.nombre) === norm(datos.nombre));
         if (repetido && !confirm(`Ya existe "${repetido.nombre}". ¿Registrar otro participante con el mismo nombre?`)) return;
         intentar(async () => {
@@ -1003,16 +1003,18 @@ async function vistaParticipantes() {
       ${dato("Última participación", u ? `${esc(u.tipo)}, ${esc(cuando(u.fecha))}` : "ninguna registrada", !u)}
     </p>`;
   };
-  const filtro = { q: "", org: "" };
+  const filtro = { q: "", org: "", estado: "" };
+  const inactivos = lista.filter((p) => p.activo === false).length;
 
   main.innerHTML = `
-    <div class="bar"><h1>Participantes <small class="muted">(${lista.length})</small></h1>
+    <div class="bar"><h1>Participantes <small class="muted">(${lista.length - inactivos}${inactivos ? ` + ${inactivos} inactivo${inactivos > 1 ? "s" : ""}` : ""})</small></h1>
       ${puedeEditar ? `<div class="row">
         <button class="btn" id="agregar"><span class="ms">person_add</span>Agregar</button>
         <label class="btn ghost"><span class="ms">upload_file</span>Importar Excel o CSV<input type="file" id="archivo" accept=".xlsx,.xls,.csv,.txt" hidden></label>
       </div>` : ""}</div>
     <div class="row filtros">
       <input type="search" id="q" placeholder="Buscar por nombre">
+      <select id="estado"><option value="">Activos e inactivos</option><option value="activos">Solo activos</option><option value="inactivos">Solo inactivos</option></select>
       <select id="org"><option value="">Todas las organizaciones</option>${[...new Set([...ORGANIZACIONES, ...lista.map((p) => p.organizacion).filter(Boolean)])].map((o) => `<option>${esc(o)}</option>`).join("")}</select>
     </div>
     <div id="lista"></div>
@@ -1024,7 +1026,11 @@ async function vistaParticipantes() {
 
   const pintar = () => {
     const q = norm(filtro.q);
-    const vis = lista.filter((p) => (!q || norm(p.nombre).includes(q)) && (!filtro.org || p.organizacion === filtro.org));
+    const estadoOk = (p) => !filtro.estado || (filtro.estado === "inactivos") === (p.activo === false);
+    // Los inactivos van al final de la lista
+    const vis = lista
+      .filter((p) => (!q || norm(p.nombre).includes(q)) && (!filtro.org || p.organizacion === filtro.org) && estadoOk(p))
+      .sort((a, b) => (a.activo === false) - (b.activo === false));
     if (!lista.length) {
       $lista.innerHTML = `<div class="card center"><p>Aún no hay participantes.</p>
         ${puedeEditar ? `<p class="muted small">Agrégalos uno por uno o importa un archivo CSV con las columnas: <code>Nombre, Organización, Teléfono</code>.</p>` : ""}
@@ -1032,13 +1038,17 @@ async function vistaParticipantes() {
       return;
     }
     $lista.innerHTML = vis.map((p) => `
-      <div class="card persona">
-        <div><strong>${esc(p.nombre)}</strong>
+      <div class="card persona ${p.activo === false ? "inactivo" : ""}">
+        <div><strong>${esc(p.nombre)}</strong>${p.activo === false ? ` <span class="pill">Inactivo</span>` : ""}
           <p class="muted small">${esc(p.organizacion || "Sin organización")}
           ${verTel && tel[p.id] ? ` · <a href="tel:${esc(tel[p.id])}">${esc(tel[p.id])}</a>` : ""}</p>
           ${S.perms.verAgenda ? historialDe(p.id) : ""}
         </div>
-        ${puedeEditar ? `<div class="acciones"><button class="btn ghost sm" data-editar="${p.id}">Editar</button>
+        ${puedeEditar ? `<div class="acciones">
+          ${p.activo === false
+            ? `<button class="btn sm" data-activar="${p.id}"><span class="ms">person_check</span>Reactivar</button>`
+            : `<button class="btn text sm" data-desactivar="${p.id}" title="No aparecerá al elegir participantes"><span class="ms">person_off</span>Desactivar</button>`}
+          <button class="btn ghost sm" data-editar="${p.id}">Editar</button>
           <button class="icon danger" data-borrar="${p.id}" title="Eliminar"><span class="ms">delete</span></button></div>` : ""}
       </div>`).join("") || `<p class="muted">Nadie coincide con la búsqueda.</p>`;
   };
@@ -1061,7 +1071,7 @@ async function vistaParticipantes() {
       intentar(async () => {
         const id = p.id || store.newId(`${B()}/participantes`);
         await store.set(`${B()}/participantes/${id}`, {
-          nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(),
+          nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), activo: p.activo !== false,
         });
         if (mostrarTel) await store.set(`${B()}/contactos/${id}`, { telefono: f.get("telefono").trim() });
         dlg.close();
@@ -1108,7 +1118,8 @@ async function vistaParticipantes() {
         items.forEach((x) => {
           const id = porNombre[norm(x.nombre)] || store.newId(`${B()}/participantes`);
           porNombre[norm(x.nombre)] = id;
-          escrituras.push({ path: `${B()}/participantes/${id}`, data: { nombre: x.nombre, organizacion: x.organizacion } });
+          const previo = lista.find((p) => p.id === id);
+          escrituras.push({ path: `${B()}/participantes/${id}`, data: { nombre: x.nombre, organizacion: x.organizacion, activo: previo ? previo.activo !== false : true } });
           if (x.telefono) escrituras.push({ path: `${B()}/contactos/${id}`, data: { telefono: x.telefono } });
         });
         await store.batchSet(escrituras);
@@ -1121,6 +1132,7 @@ async function vistaParticipantes() {
 
   document.getElementById("q").oninput = (e) => ((filtro.q = e.target.value), pintar());
   document.getElementById("org").onchange = (e) => ((filtro.org = e.target.value), pintar());
+  document.getElementById("estado").onchange = (e) => ((filtro.estado = e.target.value), pintar());
   if (puedeEditar) {
     document.getElementById("agregar").onclick = () => formulario();
     document.getElementById("archivo").onchange = (e) => {
@@ -1135,15 +1147,26 @@ async function vistaParticipantes() {
           const filas = [];
           EJEMPLO.forEach(([nombre, organizacion, telefono]) => {
             const id = store.newId();
-            filas.push({ path: `${B()}/participantes/${id}`, data: { nombre, organizacion } });
+            filas.push({ path: `${B()}/participantes/${id}`, data: { nombre, organizacion, activo: true } });
             filas.push({ path: `${B()}/contactos/${id}`, data: { telefono } });
           });
           await store.batchSet(filas);
           vistaParticipantes();
         });
       }
-      const p = lista.find((x) => x.id === (b.dataset.editar || b.dataset.borrar));
+      const p = lista.find((x) => x.id === (b.dataset.editar || b.dataset.borrar || b.dataset.activar || b.dataset.desactivar));
       if (b.dataset.editar) formulario(p);
+      if (b.dataset.activar || b.dataset.desactivar) {
+        const activo = !!b.dataset.activar;
+        if (!activo && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes reactivarlo cuando quieras.`)) return;
+        intentar(async () => {
+          await store.set(`${B()}/participantes/${p.id}`, { activo }, true);
+          p.activo = activo;
+          S.participantes = null;
+          toast(activo ? `${p.nombre} reactivado` : `${p.nombre} desactivado`);
+          vistaParticipantes();
+        });
+      }
       if (b.dataset.borrar && confirm(`¿Eliminar a ${p.nombre}?`)) {
         intentar(async () => {
           await store.del(`${B()}/participantes/${p.id}`);

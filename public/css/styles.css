@@ -266,6 +266,7 @@ main { max-width: 860px; margin: 0 auto; padding: 1rem 16px calc(9rem + env(safe
 .pill.discursos { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
 .pill.pend { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .pill.admin { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.persona.inactivo > div:first-child { opacity: .55; }
 .persona.pendiente { background: color-mix(in srgb, var(--warn-soft) 60%, var(--surface)); }
 .filtros { margin-bottom: 1rem; }
 .filtros select { flex: 1; min-width: 160px; }

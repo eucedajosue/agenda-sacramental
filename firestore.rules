@@ -124,7 +124,8 @@ service cloud.firestore {
       match /participantes/{id} {
         allow read: if permiso(b, 'verParticipantes') || permiso(b, 'editarParticipantes') || permiso(b, 'editarAgenda');
         allow create, update: if permiso(b, 'editarParticipantes')
-          && datos().keys().hasOnly(['nombre', 'organizacion'])
+          && datos().keys().hasOnly(['nombre', 'organizacion', 'activo'])
+          && (!('activo' in datos()) || datos().activo is bool)
           && texto(datos().nombre, 100) && datos().nombre.size() > 0
           && textoOpcional(datos(), 'organizacion', 60);
         allow delete: if permiso(b, 'editarParticipantes');
