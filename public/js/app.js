@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.9";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.9";
+import { store, DEMO } from "./store.js?v=2026.10.15.10";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.10";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.9";
+const VERSION = "2026.10.15.10";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -161,6 +161,73 @@ function confirmar({ titulo, mensaje = "", aceptar = "Aceptar", cancelar = "Canc
     });
     d.showModal();
     d.querySelector('[data-r="1"]').focus();
+  });
+}
+
+// Ventana para elegir la fecha de una agenda: próximos domingos u "Otra fecha" con día, mes y año.
+// Devuelve una promesa con la fecha elegida ("aaaa-mm-dd") o null si se cancela.
+function pedirFecha({ titulo, aceptar, existentes = new Set(), actual = "", permitirExistente = false, nota = "" }) {
+  return new Promise((resolve) => {
+    const hoyD = new Date(hoyISO() + "T12:00");
+    const base = new Date(proximoDomingo() + "T12:00");
+    const domingos = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(base);
+      d.setDate(d.getDate() + 7 * i);
+      return d.toISOString().slice(0, 10);
+    });
+    const libre = domingos.find((x) => !existentes.has(x) && x !== actual);
+    const ini = actual ? new Date(actual + "T12:00") : hoyD;
+    const anios = [...new Set([hoyD.getFullYear() - 1, hoyD.getFullYear(), hoyD.getFullYear() + 1, ini.getFullYear()])].sort();
+    document.getElementById("dlgFecha")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgFecha";
+    d.innerHTML = `<form class="stack">
+      <h2>${esc(titulo)}</h2>
+      ${nota ? `<p class="muted small">${nota}</p>` : ""}
+      <label>Domingo<select name="domingo">
+        ${domingos.map((f) => `<option value="${f}" ${f === libre ? "selected" : ""} ${f === actual ? "disabled" : ""}>${esc(fechaLarga(f))}${
+          f === actual ? " · fecha actual" : existentes.has(f) ? " · ya tiene agenda" : ""}</option>`).join("")}
+        <option value="otra">Otra fecha…</option></select></label>
+      <div class="fecha-otra" hidden>
+        <label>Día<select name="dia">${Array.from({ length: 31 }, (_, i) => `<option ${i + 1 === ini.getDate() ? "selected" : ""}>${i + 1}</option>`).join("")}</select></label>
+        <label>Mes<select name="mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i === ini.getMonth() ? "selected" : ""}>${m}</option>`).join("")}</select></label>
+        <label>Año<select name="anio">${anios.map((a) => `<option ${a === ini.getFullYear() ? "selected" : ""}>${a}</option>`).join("")}</select></label>
+      </div>
+      <p class="error small" hidden></p>
+      <div class="row end"><button type="button" class="btn ghost" data-cancelar>Cancelar</button><button class="btn">${esc(aceptar)}</button></div>
+    </form>`;
+    document.body.appendChild(d);
+    const form = d.querySelector("form");
+    const otra = d.querySelector(".fecha-otra");
+    const err = d.querySelector(".error");
+    const error = (t) => {
+      err.textContent = t;
+      err.hidden = false;
+    };
+    let resultado = null;
+    form.domingo.onchange = () => {
+      otra.hidden = form.domingo.value !== "otra";
+      err.hidden = true;
+    };
+    d.querySelector("[data-cancelar]").onclick = () => d.close();
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      let fecha = form.domingo.value;
+      if (fecha === "otra") {
+        const [dd, mm, aa] = [form.dia.value, form.mes.value, form.anio.value].map(Number);
+        if (new Date(aa, mm - 1, dd).getDate() !== dd) return error("Esa fecha no existe. Revisa el día y el mes.");
+        fecha = `${aa}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+      }
+      if (fecha === actual) return error("Elige una fecha distinta a la actual.");
+      if (!permitirExistente && existentes.has(fecha)) return error(`Ya hay una agenda para el ${fechaLarga(fecha)}.`);
+      resultado = fecha;
+      d.close();
+    };
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(resultado);
+    });
+    d.showModal();
   });
 }
 
@@ -514,14 +581,7 @@ async function vistaAgendas() {
   const reuniones = await store.list(`${B()}/reuniones`);
   const hoy = hoyISO();
   const proximas = reuniones.filter((r) => r.id >= hoy).sort((a, b) => a.id.localeCompare(b.id));
-  // Opciones para "Nueva agenda": los próximos 12 domingos
   const existentes = new Set(reuniones.map((r) => r.id));
-  const hoyD = new Date(hoy + "T12:00");
-  const domingos = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date(proximoDomingo() + "T12:00");
-    d.setDate(d.getDate() + 7 * i);
-    return d.toISOString().slice(0, 10);
-  });
   const pasadas = reuniones.filter((r) => r.id < hoy).sort((a, b) => b.id.localeCompare(a.id));
   const puedeEditar = S.perms.editarAgenda;
 
@@ -592,20 +652,7 @@ async function vistaAgendas() {
   main.innerHTML = `
     <div class="bar"><h1>Reuniones sacramentales</h1>
     </div>
-    ${puedeEditar ? `<button class="fab" id="fab"><span class="ms">add</span><span>Nueva agenda</span></button>
-      <dialog id="dlgNueva"><form id="nueva" class="stack" method="dialog">
-        <h2>Nueva agenda</h2>
-        <label>Domingo<select name="domingo" id="selDomingo">
-          ${domingos.map((f) => `<option value="${f}" ${f === domingos.find((x) => !existentes.has(x)) ? "selected" : ""}>${esc(fechaLarga(f))}${existentes.has(f) ? " · ya tiene agenda" : ""}</option>`).join("")}
-          <option value="otra">Otra fecha…</option></select></label>
-        <div id="otraFecha" class="fecha-otra" hidden>
-          <label>Día<select name="dia">${Array.from({ length: 31 }, (_, i) => `<option ${i + 1 === hoyD.getDate() ? "selected" : ""}>${i + 1}</option>`).join("")}</select></label>
-          <label>Mes<select name="mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i === hoyD.getMonth() ? "selected" : ""}>${m}</option>`).join("")}</select></label>
-          <label>Año<select name="anio">${[-1, 0, 1].map((k) => `<option ${k === 0 ? "selected" : ""}>${hoyD.getFullYear() + k}</option>`).join("")}</select></label>
-        </div>
-        <p id="errFecha" class="error small" hidden></p>
-        <div class="row end"><button type="button" class="btn text" id="cancelarNueva">Cancelar</button><button class="btn">Crear</button></div>
-      </form></dialog>` : ""}
+    ${puedeEditar ? `<button class="fab" id="fab"><span class="ms">add</span><span>Nueva agenda</span></button>` : ""}
     <h3>Próximas</h3>
     ${proximas.length ? proximas.map(tarjeta).join("") : `<p class="muted">No hay reuniones próximas planificadas.</p>`}
     ${pasadas.length ? `
@@ -633,29 +680,9 @@ async function vistaAgendas() {
   });
 
   if (!puedeEditar) return;
-  const dlgNueva = document.getElementById("dlgNueva");
-  document.getElementById("fab").onclick = () => dlgNueva.showModal();
-  document.getElementById("cancelarNueva").onclick = () => dlgNueva.close();
-  const otraFecha = document.getElementById("otraFecha");
-  const errFecha = document.getElementById("errFecha");
-  document.getElementById("selDomingo").onchange = (e) => {
-    otraFecha.hidden = e.target.value !== "otra";
-    errFecha.hidden = true;
-  };
-  document.getElementById("nueva").onsubmit = (e) => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    let fecha = f.get("domingo");
-    if (fecha === "otra") {
-      const [d, m, a] = ["dia", "mes", "anio"].map((k) => Number(f.get(k)));
-      if (new Date(a, m - 1, d).getDate() !== d) {
-        errFecha.textContent = "Esa fecha no existe. Revisa el día y el mes.";
-        errFecha.hidden = false;
-        return;
-      }
-      fecha = `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    }
-    location.hash = `#/agenda/${fecha}`;
+  document.getElementById("fab").onclick = async () => {
+    const fecha = await pedirFecha({ titulo: "Nueva agenda", aceptar: "Crear", existentes, permitirExistente: true });
+    if (fecha) location.hash = `#/agenda/${fecha}`;
   };
   main.onclick = async (e) => {
     const id = e.target.closest("[data-borrar]")?.dataset.borrar;
@@ -890,7 +917,8 @@ async function vistaEditor(fecha) {
     const disc = draft.tipo === "discursos";
     let n = 0;
     main.innerHTML = `
-    <div class="bar"><div><a href="#/agenda" class="btn text"><span class="ms">arrow_back</span>Agendas</a><h1 class="cap">${esc(fechaLarga(fecha))}</h1></div></div>
+    <div class="bar"><div><a href="#/agenda" class="btn text"><span class="ms">arrow_back</span>Agendas</a><h1 class="cap">${esc(fechaLarga(fecha))}</h1></div>
+      ${existente && S.esAdmin ? `<button type="button" class="btn ghost sm" id="cambiarFecha"><span class="ms">edit_calendar</span>Cambiar fecha</button>` : ""}</div>
     <div id="avisoFaltan">${avisoFaltantes(draft)}</div>
     ${participantes.length ? "" : `<p class="aviso">Aún no hay participantes registrados. Puedes registrarlos desde cada selector con "Nuevo participante", o <a href="#/participantes">importarlos todos</a>.</p>`}
     ${seccion(++n, "Presidencia", `
@@ -964,6 +992,23 @@ async function vistaEditor(fecha) {
     if (!b) return;
     if (b.dataset.pick) return abrirSelector(b.dataset.pick, b.dataset.tipo);
     if (b.dataset.himnoPick) return abrirHimnos(b.dataset.himnoPick);
+    if (b.id === "cambiarFecha" && S.esAdmin) {
+      // La fecha es el identificador de la agenda: se copia a la fecha nueva y se borra la anterior
+      const nueva = await pedirFecha({
+        titulo: "Cambiar fecha de la agenda", aceptar: "Cambiar fecha", actual: fecha,
+        existentes: new Set(reuniones.map((r) => r.id)),
+        nota: `Fecha actual: ${esc(fechaLarga(fecha))}.${S.dirty ? " Los cambios sin guardar también se guardarán." : ""}`,
+      });
+      if (!nueva) return;
+      return intentar(async () => {
+        if (await store.get(`${B()}/reuniones/${nueva}`)) throw new Error(`Ya hay una agenda para el ${fechaLarga(nueva)}.`);
+        await store.set(`${B()}/reuniones/${nueva}`, { ...draft, fecha: nueva, actualizadoPor: S.user.name, actualizadoEn: now() });
+        await store.del(`${B()}/reuniones/${fecha}`);
+        S.dirty = false;
+        toast(`Agenda movida al ${fechaLarga(nueva)}`);
+        location.hash = `#/agenda/${nueva}`;
+      });
+    }
     const ref = b.dataset.add || b.dataset.del || b.dataset.up;
     if (b.dataset.add) draft[ref].push(clone(PLANTILLAS[ref]));
     if (b.dataset.del || b.dataset.up) {

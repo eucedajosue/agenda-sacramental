@@ -97,6 +97,9 @@ La importación de participantes también acepta archivos de Excel.
 Solo los administradores del barrio pueden eliminar una agenda (desde la lista o dentro del editor); las reglas de
 Firestore también lo exigen. Siempre se pide confirmación.
 
+Los administradores también pueden **Cambiar fecha** desde el editor: la agenda (incluidos los cambios sin guardar)
+se mueve a la nueva fecha. No se permite elegir una fecha que ya tenga agenda.
+
 ## Participantes inactivos
 
 En **Participantes**, el botón **Desactivar** saca a una persona de los selectores de la agenda (por ejemplo, si se mudó)
