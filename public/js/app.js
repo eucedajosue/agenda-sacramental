@@ -1047,7 +1047,7 @@ async function vistaParticipantes() {
         </div>
         ${puedeEditar ? `<div class="acciones">
           ${p.activo === false
-            ? `<button class="btn sm" data-activar="${p.id}"><span class="ms">person_check</span>Reactivar</button>`
+            ? `<button class="btn sm" data-activar="${p.id}"><span class="ms">person_check</span>Activar</button>`
             : `<button class="btn text sm" data-desactivar="${p.id}" title="No aparecerá al elegir participantes"><span class="ms">person_off</span>Desactivar</button>`}
           <button class="btn ghost sm" data-editar="${p.id}">Editar</button>
           <button class="icon danger" data-borrar="${p.id}" title="Eliminar"><span class="ms">delete</span></button></div>` : ""}
@@ -1159,7 +1159,7 @@ async function vistaParticipantes() {
       if (b.dataset.editar) formulario(p);
       if (b.dataset.activar || b.dataset.desactivar) {
         const activo = !!b.dataset.activar;
-        if (!activo && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes reactivarlo cuando quieras.`)) return;
+        if (!activo && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes activarlo de nuevo cuando quieras.`)) return;
         intentar(async () => {
           await store.set(`${B()}/participantes/${p.id}`, { activo }, true);
           // Se actualiza solo la lista, sin recargar la página ni perder filtros o posición
@@ -1179,7 +1179,7 @@ async function vistaParticipantes() {
             pintar();
             $lista.querySelector(`[data-id="${p.id}"]`)?.classList.add("destello");
           }
-          toast(activo ? `${p.nombre} reactivado` : `${p.nombre} desactivado`);
+          toast(activo ? `${p.nombre} activado` : `${p.nombre} desactivado`);
         });
       }
       if (b.dataset.borrar && confirm(`¿Eliminar a ${p.nombre}?`)) {
