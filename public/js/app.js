@@ -58,6 +58,8 @@ const now = () => new Date().toISOString();
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+// Silueta genérica de un centro de reuniones (capilla con aguja)
+const CAPILLA = `<svg class="capilla" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 1.2 13.7 7.2H10.3Z"/><rect x="10.3" y="7.2" width="3.4" height="4.3"/><path d="M2 13.6 12 9.8 22 13.6V15H2Z"/><path d="M3.6 15h16.8v7.2H3.6Z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="10.4" y="17.3" width="3.2" height="4.9" rx="1.6"/><rect x="6" y="16.8" width="2" height="3" rx="1"/><rect x="16" y="16.8" width="2" height="3" rx="1"/></svg>`;
 const LOADING = `<div class="loader" role="progressbar" aria-label="Cargando"></div>`;
 
 function fechaLarga(f) {
@@ -166,7 +168,7 @@ function renderLogin() {
   $app.innerHTML = `${demoBanner()}
   <div class="login">
     <div class="card narrow">
-      <div class="logo"><span class="ms">church</span></div>
+      <div class="logo"><span>${CAPILLA}</span></div>
       <h1>Reunión Sacramental</h1>
       <p class="muted">Planificación de la agenda para el obispado</p>
       ${DEMO
@@ -357,7 +359,7 @@ function shell(activa) {
   ].filter((t) => t[3]);
   $app.innerHTML = `${demoBanner()}
   <header class="top noprint">
-    <span class="ms brand-icon">church</span>
+    <span class="brand-icon">${CAPILLA}</span>
     <div class="brand"><strong>${esc(S.barrio.nombre)}</strong><small>${esc(S.barrio.estaca || "")}</small></div>
     <div class="who"><span>${esc(S.user.name)}<small>${esc(S.esAdmin ? "Administrador" : S.rolNombre)}</small></span>
       <span class="avatar">${esc((S.user.name || "?").trim().charAt(0).toUpperCase())}</span>
