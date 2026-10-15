@@ -1003,7 +1003,7 @@ async function vistaParticipantes() {
       ${dato("Última participación", u ? `${esc(u.tipo)}, ${esc(cuando(u.fecha))}` : "ninguna registrada", !u)}
     </p>`;
   };
-  const filtro = { q: "", org: "", estado: "" };
+  const filtro = { q: "", org: "", estado: "activos" };
   const inactivos = lista.filter((p) => p.activo === false).length;
 
   main.innerHTML = `
@@ -1014,7 +1014,7 @@ async function vistaParticipantes() {
       </div>` : ""}</div>
     <div class="row filtros">
       <input type="search" id="q" placeholder="Buscar por nombre">
-      <select id="estado"><option value="">Activos e inactivos</option><option value="activos">Solo activos</option><option value="inactivos">Solo inactivos</option></select>
+      <select id="estado"><option value="activos" selected>Solo activos</option><option value="inactivos">Solo inactivos</option><option value="">Activos e inactivos</option></select>
       <select id="org"><option value="">Todas las organizaciones</option>${[...new Set([...ORGANIZACIONES, ...lista.map((p) => p.organizacion).filter(Boolean)])].map((o) => `<option>${esc(o)}</option>`).join("")}</select>
     </div>
     <div id="lista"></div>
