@@ -33,7 +33,8 @@ const ORGANIZACIONES = [
 // Cuadro en blanco al imprimir una reunión de testimonios
 const COLUMNAS_TESTIMONIOS = 4;
 const FILAS_TESTIMONIOS = 8;
-const TIPOS_ASUNTO =["Sostenimiento", "Relevo", "Ordenación al sacerdocio", "Otro"];
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const TIPOS_ASUNTO = ["Sostenimiento", "Relevo", "Ordenación al sacerdocio", "Otro"];
 
 const PLANTILLAS = {
   visitantes: { nombre: "", llamamiento: "" },
@@ -426,6 +427,14 @@ async function vistaAgendas() {
   const reuniones = await store.list(`${B()}/reuniones`);
   const hoy = hoyISO();
   const proximas = reuniones.filter((r) => r.id >= hoy).sort((a, b) => a.id.localeCompare(b.id));
+  // Opciones para "Nueva agenda": los próximos 12 domingos
+  const existentes = new Set(reuniones.map((r) => r.id));
+  const hoyD = new Date(hoy + "T12:00");
+  const domingos = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date(proximoDomingo() + "T12:00");
+    d.setDate(d.getDate() + 7 * i);
+    return d.toISOString().slice(0, 10);
+  });
   const pasadas = reuniones.filter((r) => r.id < hoy).sort((a, b) => b.id.localeCompare(a.id));
   const puedeEditar = S.perms.editarAgenda;
 
@@ -499,7 +508,15 @@ async function vistaAgendas() {
     ${puedeEditar ? `<button class="fab" id="fab"><span class="ms">add</span><span>Nueva agenda</span></button>
       <dialog id="dlgNueva"><form id="nueva" class="stack" method="dialog">
         <h2>Nueva agenda</h2>
-        <label>Fecha de la reunión<input type="date" name="fecha" value="${proximoDomingo()}" required></label>
+        <label>Domingo<select name="domingo" id="selDomingo">
+          ${domingos.map((f) => `<option value="${f}" ${f === domingos.find((x) => !existentes.has(x)) ? "selected" : ""}>${esc(fechaLarga(f))}${existentes.has(f) ? " · ya tiene agenda" : ""}</option>`).join("")}
+          <option value="otra">Otra fecha…</option></select></label>
+        <div id="otraFecha" class="fecha-otra" hidden>
+          <label>Día<select name="dia">${Array.from({ length: 31 }, (_, i) => `<option ${i + 1 === hoyD.getDate() ? "selected" : ""}>${i + 1}</option>`).join("")}</select></label>
+          <label>Mes<select name="mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i === hoyD.getMonth() ? "selected" : ""}>${m}</option>`).join("")}</select></label>
+          <label>Año<select name="anio">${[-1, 0, 1].map((k) => `<option ${k === 0 ? "selected" : ""}>${hoyD.getFullYear() + k}</option>`).join("")}</select></label>
+        </div>
+        <p id="errFecha" class="error small" hidden></p>
         <div class="row end"><button type="button" class="btn text" id="cancelarNueva">Cancelar</button><button class="btn">Crear</button></div>
       </form></dialog>` : ""}
     <h3>Próximas</h3>
@@ -532,9 +549,26 @@ async function vistaAgendas() {
   const dlgNueva = document.getElementById("dlgNueva");
   document.getElementById("fab").onclick = () => dlgNueva.showModal();
   document.getElementById("cancelarNueva").onclick = () => dlgNueva.close();
+  const otraFecha = document.getElementById("otraFecha");
+  const errFecha = document.getElementById("errFecha");
+  document.getElementById("selDomingo").onchange = (e) => {
+    otraFecha.hidden = e.target.value !== "otra";
+    errFecha.hidden = true;
+  };
   document.getElementById("nueva").onsubmit = (e) => {
     e.preventDefault();
-    location.hash = `#/agenda/${new FormData(e.target).get("fecha")}`;
+    const f = new FormData(e.target);
+    let fecha = f.get("domingo");
+    if (fecha === "otra") {
+      const [d, m, a] = ["dia", "mes", "anio"].map((k) => Number(f.get(k)));
+      if (new Date(a, m - 1, d).getDate() !== d) {
+        errFecha.textContent = "Esa fecha no existe. Revisa el día y el mes.";
+        errFecha.hidden = false;
+        return;
+      }
+      fecha = `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+    location.hash = `#/agenda/${fecha}`;
   };
   main.onclick = (e) => {
     const id = e.target.closest("[data-borrar]")?.dataset.borrar;

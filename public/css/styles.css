@@ -227,6 +227,8 @@ main { max-width: 860px; margin: 0 auto; padding: 1rem 16px calc(9rem + env(safe
   .tres { grid-template-columns: 1fr 1.5fr 1.5fr; }
 }
 .field { margin-bottom: 1rem; }
+.fecha-otra { display: grid; grid-template-columns: 1fr 1.7fr 1.2fr; gap: .5rem; }
+.fecha-otra[hidden] { display: none; }
 .aviso { background: var(--warn-soft); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 20%, transparent); border-radius: var(--radius); padding: .75rem 1rem; font-size: .9rem; }
 .aviso a { color: inherit; font-weight: 600; }
 
