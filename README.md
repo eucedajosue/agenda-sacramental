@@ -92,6 +92,11 @@ impórtalo con **Importar Excel o CSV**. Al importar se reemplaza el catálogo c
 
 La importación de participantes también acepta archivos de Excel.
 
+## Eliminar agendas
+
+Solo los administradores del barrio pueden eliminar una agenda (desde la lista o dentro del editor); las reglas de
+Firestore también lo exigen. Siempre se pide confirmación.
+
 ## Participantes inactivos
 
 En **Participantes**, el botón **Desactivar** saca a una persona de los selectores de la agenda (por ejemplo, si se mudó)
@@ -117,7 +122,7 @@ Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman 
 
 ## Probar las reglas de seguridad
 
-Las reglas se probaron con el emulador de Firestore (52 casos: barrios pendientes, aprobación,
+Las reglas se probaron con el emulador de Firestore (55 casos: barrios pendientes, aprobación,
 suspensión, límites de tamaño, permisos y catálogo de himnos). El emulador requiere Java 21 con `firebase-tools` actual.
 
 ## Importar participantes

@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.6";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.6";
+import { store, DEMO } from "./store.js?v=2026.10.15.7";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.7";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.6";
+const VERSION = "2026.10.15.7";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -131,6 +131,38 @@ document.addEventListener("click", (e) => {
   if (inicioEnFondo && clicEnFondo(e)) e.target.close();
   inicioEnFondo = false;
 });
+
+// Ventana de confirmación propia (el confirm() del navegador puede quedar bloqueado y devolver
+// siempre "Cancelar"). Devuelve una promesa con true si se acepta. "mensaje" puede llevar HTML ya escapado.
+function confirmar({ titulo, mensaje = "", aceptar = "Aceptar", cancelar = "Cancelar", peligro = false }) {
+  return new Promise((resolve) => {
+    document.getElementById("dlgConfirmar")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgConfirmar";
+    d.innerHTML = `<form method="dialog" class="stack">
+      <h2>${esc(titulo)}</h2>
+      ${mensaje ? `<p>${mensaje}</p>` : ""}
+      <div class="row end">
+        <button type="button" class="btn ghost" data-r="0">${esc(cancelar)}</button>
+        <button type="button" class="btn ${peligro ? "danger-solido" : ""}" data-r="1">${esc(aceptar)}</button>
+      </div>
+    </form>`;
+    document.body.appendChild(d);
+    let respuesta = false;
+    d.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-r]");
+      if (!b) return;
+      respuesta = b.dataset.r === "1";
+      d.close();
+    });
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(respuesta);
+    });
+    d.showModal();
+    d.querySelector('[data-r="1"]').focus();
+  });
+}
 
 function demoBanner() {
   return DEMO
@@ -345,12 +377,19 @@ function route() {
     return;
   }
   if (S.dirty && location.hash !== S.lastHash) {
-    if (!confirm("Hay cambios sin guardar. ¿Salir de todos modos?")) {
-      S.skipRoute = true;
-      location.hash = S.lastHash;
-      return;
-    }
-    S.dirty = false;
+    // Se vuelve a la agenda mientras se pregunta; si acepta, se continúa al destino
+    const destino = location.hash;
+    S.skipRoute = true;
+    location.hash = S.lastHash;
+    confirmar({
+      titulo: "Hay cambios sin guardar", mensaje: "Si sales ahora, se perderán los cambios de esta agenda.",
+      aceptar: "Salir sin guardar", cancelar: "Seguir editando", peligro: true,
+    }).then((ok) => {
+      if (!ok) return;
+      S.dirty = false;
+      location.hash = destino;
+    });
+    return;
   }
   S.lastHash = location.hash;
   const [, page = "", arg] = location.hash.split("/");
@@ -387,11 +426,13 @@ function shell(activa) {
   </header>
   <nav class="nav noprint">${tabs.map(([k, l, ico]) => `<a href="#/${k}" class="${k === activa ? "on" : ""}"><span class="ind"><span class="ms">${ico}</span></span><span class="lbl">${l}</span></a>`).join("")}</nav>
   <main id="main">${LOADING}</main>`;
-  document.getElementById("salir").onclick = () => {
-    if (!S.dirty || confirm("Hay cambios sin guardar. ¿Salir de todos modos?")) {
-      S.dirty = false;
-      store.signOut();
-    }
+  document.getElementById("salir").onclick = async () => {
+    if (S.dirty && !(await confirmar({
+      titulo: "Hay cambios sin guardar", mensaje: "Si cierras sesión ahora, se perderán los cambios de esta agenda.",
+      aceptar: "Salir sin guardar", cancelar: "Seguir editando", peligro: true,
+    }))) return;
+    S.dirty = false;
+    store.signOut();
   };
   return document.getElementById("main");
 }
@@ -419,6 +460,14 @@ function nuevaReunion(fecha) {
     ultimoHimno: himno(), ultimaOracion: null, notas: "",
   };
 }
+
+const confirmarEliminarAgenda = (fecha) =>
+  confirmar({
+    titulo: "¿Eliminar esta agenda?",
+    mensaje: `Se eliminará la agenda del <strong>${esc(fechaLarga(fecha))}</strong> con todos sus datos
+      (discursantes, oraciones, himnos, anuncios y asuntos). Esta acción no se puede deshacer.`,
+    aceptar: "Eliminar agenda", peligro: true,
+  });
 
 const discursantesDe = (r) => (r.tipo === "testimonios" ? [] : [...(r.discursantes1 || []), ...(r.discursantes2 || [])]);
 
@@ -480,8 +529,8 @@ async function vistaAgendas() {
         <p class="muted small">${resumen(r)}</p></div>
       <div class="acciones">
         <a class="btn ghost sm" href="#/ver/${r.id}">Ver</a>
-        ${puedeEditar ? `<a class="btn sm" href="#/agenda/${r.id}">Editar</a>
-        <button class="icon danger" data-borrar="${r.id}" title="Eliminar"><span class="ms">delete</span></button>` : ""}
+        ${puedeEditar ? `<a class="btn sm" href="#/agenda/${r.id}">Editar</a>` : ""}
+        ${S.esAdmin ? `<button class="icon danger" data-borrar="${r.id}" title="Eliminar agenda (solo administradores)"><span class="ms">delete</span></button>` : ""}
       </div></div>`;
 
   const filaPasada = (r) => {
@@ -589,15 +638,14 @@ async function vistaAgendas() {
     }
     location.hash = `#/agenda/${fecha}`;
   };
-  main.onclick = (e) => {
+  main.onclick = async (e) => {
     const id = e.target.closest("[data-borrar]")?.dataset.borrar;
-    if (id && confirm(`¿Eliminar la agenda del ${fechaLarga(id)}?`)) {
-      intentar(async () => {
-        await store.del(`${B()}/reuniones/${id}`);
-        toast("Agenda eliminada");
-        vistaAgendas();
-      });
-    }
+    if (!id || !S.esAdmin || !(await confirmarEliminarAgenda(id))) return;
+    intentar(async () => {
+      await store.del(`${B()}/reuniones/${id}`);
+      toast("Agenda eliminada");
+      vistaAgendas();
+    });
   };
 }
 
@@ -709,8 +757,12 @@ async function vistaEditor(fecha) {
         const f = new FormData(e.target);
         const datos = { nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), activo: true };
         const repetido = participantes.find((p) => norm(p.nombre) === norm(datos.nombre));
-        if (repetido && !confirm(`Ya existe "${repetido.nombre}". ¿Registrar otro participante con el mismo nombre?`)) return;
         intentar(async () => {
+          if (repetido && !(await confirmar({
+            titulo: "Ya existe ese nombre",
+            mensaje: `Ya hay un participante llamado <strong>${esc(repetido.nombre)}</strong>. ¿Registrar otro con el mismo nombre?`,
+            aceptar: "Registrar otro",
+          }))) return;
           const id = store.newId(`${B()}/participantes`);
           await store.set(`${B()}/participantes/${id}`, datos);
           const tel = f.get("telefono").trim();
@@ -843,7 +895,8 @@ async function vistaEditor(fecha) {
     ${seccion(++n, "Notas", `<textarea data-f="notas" rows="3" placeholder="Notas internas (opcional)">${esc(draft.notas)}</textarea>`)}
     <div class="guardar-bar noprint">
       <span id="estado" class="muted small">${S.dirty ? "Cambios sin guardar" : existente ? "Guardado" : "Nueva agenda"}</span>
-      ${existente ? `<button class="icon danger" id="eliminar" title="Eliminar agenda"><span class="ms">delete</span></button><a class="btn ghost" href="#/ver/${fecha}"><span class="ms">print</span>Ver</a>` : ""}
+      ${existente && S.esAdmin ? `<button class="icon danger" id="eliminar" title="Eliminar agenda (solo administradores)"><span class="ms">delete</span></button>` : ""}
+      ${existente ? `<a class="btn ghost" href="#/ver/${fecha}"><span class="ms">print</span>Ver</a>` : ""}
       <button class="btn" id="guardar"><span class="ms">save</span>Guardar</button>
     </div>`;
   };
@@ -897,7 +950,7 @@ async function vistaEditor(fecha) {
       marcar();
       return render();
     }
-    if (b.id === "eliminar" && confirm(`¿Eliminar la agenda del ${fechaLarga(fecha)}?`)) {
+    if (b.id === "eliminar" && S.esAdmin && (await confirmarEliminarAgenda(fecha))) {
       await intentar(async () => {
         await store.del(`${B()}/reuniones/${fecha}`);
         S.dirty = false;
@@ -1230,8 +1283,12 @@ async function vistaParticipantes() {
       if (b.dataset.editar) formulario(p);
       if (b.dataset.activar || b.dataset.desactivar) {
         const activo = !!b.dataset.activar;
-        if (!activo && !b.dataset.sinConfirmar && !confirm(`¿Desactivar a ${p.nombre}? No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes activarlo de nuevo cuando quieras.`)) return;
         intentar(async () => {
+          if (!activo && !b.dataset.sinConfirmar && !(await confirmar({
+            titulo: `¿Desactivar a ${p.nombre}?`,
+            mensaje: "No aparecerá al elegir participantes en las agendas. Su historial se conserva y puedes activarlo de nuevo cuando quieras.",
+            aceptar: "Desactivar",
+          }))) return;
           // Se guarda el registro completo (no solo "activo") para descartar campos antiguos, como la edad,
           // que las reglas de seguridad ya no aceptan
           await store.set(`${B()}/participantes/${p.id}`, { nombre: p.nombre, organizacion: p.organizacion || "", activo });
@@ -1366,8 +1423,12 @@ async function vistaUsuarios() {
         vistaUsuarios();
       });
     }
-    if (b.dataset.quitar && confirm(`¿Quitar el acceso de ${m.nombre}?`)) {
+    if (b.dataset.quitar) {
       intentar(async () => {
+        if (!(await confirmar({
+          titulo: `¿Quitar el acceso de ${m.nombre}?`, mensaje: "Ya no podrá entrar a la app de este barrio.",
+          aceptar: "Quitar acceso", peligro: true,
+        }))) return;
         await store.del(ruta(id));
         vistaUsuarios();
       });
@@ -1423,8 +1484,11 @@ async function vistaRoles() {
     const id = e.target.dataset.borrar;
     if (!id) return;
     const r = roles.find((x) => x.id === id);
-    if (!confirm(`¿Eliminar el rol "${r.nombre}"? Las personas con este rol se quedarán sin permisos.`)) return;
     intentar(async () => {
+      if (!(await confirmar({
+        titulo: `¿Eliminar el rol "${r.nombre}"?`, mensaje: "Las personas con este rol se quedarán sin permisos.",
+        aceptar: "Eliminar rol", peligro: true,
+      }))) return;
       await store.del(`${B()}/roles/${id}`);
       vistaRoles();
     });
@@ -1527,8 +1591,12 @@ async function vistaBarrios() {
     if (!b) return;
     const barrio = barrios.find((x) => x.id === b.dataset.id);
     const nuevo = b.dataset.estado;
-    if (nuevo === "rechazado" && !confirm(`¿${barrio.estado === "aprobado" ? "Suspender" : "Rechazar"} el barrio "${barrio.nombre}"? Sus usuarios dejarán de tener acceso.`)) return;
     intentar(async () => {
+      const accion = barrio.estado === "aprobado" ? "Suspender" : "Rechazar";
+      if (nuevo === "rechazado" && !(await confirmar({
+        titulo: `¿${accion} el barrio "${barrio.nombre}"?`, mensaje: "Sus usuarios dejarán de tener acceso.",
+        aceptar: accion, peligro: true,
+      }))) return;
       await store.set(`barrios/${barrio.id}`, { estado: nuevo }, true);
       toast(nuevo === "aprobado" ? "Barrio aprobado" : "Barrio rechazado");
       vistaBarrios();

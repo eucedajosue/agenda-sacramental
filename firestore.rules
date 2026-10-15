@@ -161,7 +161,8 @@ service cloud.firestore {
           && textoOpcional(datos(), 'notas', 3000)
           && textoOpcional(datos(), 'actualizadoPor', 120)
           && textoOpcional(datos(), 'actualizadoEn', 40);
-        allow delete: if permiso(b, 'editarAgenda');
+        // Eliminar agendas: solo administradores del barrio
+        allow delete: if aprobado(b) && isAdmin(b);
       }
     }
   }
