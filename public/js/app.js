@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.7";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.7";
+import { store, DEMO } from "./store.js?v=2026.10.15.8";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.8";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.7";
+const VERSION = "2026.10.15.8";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -509,7 +509,7 @@ async function vistaAgendas() {
   const resumen = (r) =>
     r.tipo === "testimonios"
       ? `${(r.testimonios || []).filter((t) => t.persona).length} testimonios registrados`
-      : discursantesDe(r).filter((d) => d.persona).map((d) => esc(d.persona.nombre)).join(", ") || "Sin discursantes asignados";
+      : discursantesDe(r).filter((d) => d.persona).map((d) => esc(d.persona.nombre)).join(" · ") || "Sin discursantes asignados";
   const pill = (r) => `<span class="pill ${r.tipo}">${r.tipo === "testimonios" ? "Testimonios" : "Discursos"}</span>`;
   // Texto donde se busca: personas, temas, himnos y asuntos de la reunión
   const textoBusqueda = (r) => norm([
