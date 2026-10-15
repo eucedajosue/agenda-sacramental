@@ -729,11 +729,76 @@ async function vistaEditor(fecha) {
     `<input type="${type}" data-f="${path}" value="${esc(getPath(draft, path))}" placeholder="${ph}">`;
   // Himnos: al escribir el número se completa el título, y al elegir un título se completa el número
   const libroDe = (numero) => catalogo.porNumero.get(String(numero || "").trim())?.h || "";
+  const etiquetaHimno = (path) => {
+    const t = getPath(draft, path)?.titulo;
+    return (t ? `<span>${esc(t)}</span>` : `<span class="muted">Buscar himno…</span>`) + `<span class="ms">search</span>`;
+  };
   const himno = (path, label) => `
     <div class="field"><label>${label}</label>
       <div class="himno" data-himno="${path}"><input type="number" min="1" inputmode="numeric" data-f="${path}.numero" value="${esc(getPath(draft, path)?.numero)}" placeholder="N.º">
-      <input data-f="${path}.titulo" list="dlHimnos" autocomplete="off" value="${esc(getPath(draft, path)?.titulo)}" placeholder="${catalogo.lista.length ? "Título (escribe para buscar)" : "Título del himno"}"></div>
+      <button type="button" class="picker" data-himno-pick="${path}">${etiquetaHimno(path)}</button></div>
       <small class="muted himno-libro" data-libro="${path}">${esc(libroDe(getPath(draft, path)?.numero))}</small></div>`;
+
+  // Selector de himnos: misma ventana que la de participantes, busca por número o por título
+  const abrirHimnos = (path) => {
+    const actual = getPath(draft, path) || {};
+    const elegir = (numero, titulo) => {
+      setPath(draft, path, { numero: numero ? String(numero) : "", titulo: titulo || "" });
+      dlg.close();
+      marcar();
+      render();
+    };
+    dlg.innerHTML = `
+      <div class="sel-head">
+        <input type="search" id="selBuscar" placeholder="Buscar por número o título" autocomplete="off">
+        <button type="button" class="icon" id="selCerrar" title="Cerrar"><span class="ms">close</span></button>
+      </div>
+      <div class="sel-lista" id="selLista"></div>
+      <div class="sel-pie">
+        ${actual.numero || actual.titulo ? `<button type="button" class="btn text sm" id="selQuitar">Quitar himno</button>` : "<span></span>"}
+        <button type="button" class="btn ghost sm" id="selManual" hidden><span class="ms">edit</span><span id="selManualTxt"></span></button>
+      </div>`;
+    const $buscar = dlg.querySelector("#selBuscar");
+    const $lista = dlg.querySelector("#selLista");
+    const $manual = dlg.querySelector("#selManual");
+    let visibles = [];
+    const pintar = () => {
+      const q = $buscar.value.trim();
+      const t = norm(q);
+      const esNumero = /^\d+$/.test(q);
+      const todos = catalogo.lista
+        .filter((h) => !t || (esNumero ? String(h.n).startsWith(q) : norm(h.t).includes(t)))
+        .sort((a, b) => (esNumero ? (String(b.n) === q) - (String(a.n) === q) : 0) || a.n - b.n);
+      visibles = todos.slice(0, 80);
+      $lista.innerHTML = visibles.map((h, i) => `
+        <button type="button" class="sel-op himno-op ${String(h.n) === String(actual.numero) ? "actual" : ""}" data-i="${i}">
+          <span class="num-himno">${h.n}</span>
+          <span class="sel-txt"><b>${esc(h.t)}</b><small>${esc(h.h || "")}</small></span>
+        </button>`).join("")
+        + (todos.length > visibles.length ? `<p class="muted small center">Y ${todos.length - visibles.length} más. Escribe para afinar la búsqueda.</p>` : "")
+        + (todos.length ? "" : `<p class="muted center">${catalogo.lista.length ? "Ningún himno coincide." : "El catálogo de himnos todavía no está cargado."}</p>`);
+      // Si el himno no está en el catálogo, se puede escribir el título a mano
+      $manual.hidden = !q || esNumero;
+      dlg.querySelector("#selManualTxt").textContent = `Usar "${q}" como título`;
+    };
+    $buscar.oninput = pintar;
+    $buscar.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (visibles[0]) elegir(visibles[0].n, visibles[0].t);
+      else if (!$manual.hidden) $manual.click();
+    };
+    $lista.onclick = (e) => {
+      const o = e.target.closest("[data-i]");
+      if (o) elegir(visibles[+o.dataset.i].n, visibles[+o.dataset.i].t);
+    };
+    $manual.onclick = () => elegir(actual.numero, $buscar.value.trim().slice(0, 120));
+    dlg.querySelector("#selCerrar").onclick = () => dlg.close();
+    dlg.querySelector("#selQuitar")?.addEventListener("click", () => elegir("", ""));
+    pintar();
+    dlg.showModal();
+    $buscar.focus();
+  };
   const persona = (path, label, tipo) => `<div class="field"><label>${label}</label>${selPersona(path, tipo)}</div>`;
   const filas = (lista, render, textoAgregar) => `
     ${draft[lista].map((_, i) => `<div class="fila">
@@ -773,7 +838,6 @@ async function vistaEditor(fecha) {
     ${disc ? seccion(++n, "Discursantes (después del himno intermedio)", filas("discursantes2", discursante, "Agregar discursante")) : ""}
     ${seccion(++n, "Clausura", himno("ultimoHimno", "Último himno") + persona("ultimaOracion", "Última oración", "oracion"))}
     ${seccion(++n, "Notas", `<textarea data-f="notas" rows="3" placeholder="Notas internas (opcional)">${esc(draft.notas)}</textarea>`)}
-    <datalist id="dlHimnos">${catalogo.lista.map((h) => `<option value="${esc(h.t)}">${h.n} · ${esc(h.h)}</option>`).join("")}</datalist>
     <div class="guardar-bar noprint">
       <span id="estado" class="muted small">${S.dirty ? "Cambios sin guardar" : existente ? "Guardado" : "Nueva agenda"}</span>
       ${existente ? `<button class="icon danger" id="eliminar" title="Eliminar agenda"><span class="ms">delete</span></button><a class="btn ghost" href="#/ver/${fecha}"><span class="ms">print</span>Ver</a>` : ""}
@@ -792,17 +856,16 @@ async function vistaEditor(fecha) {
     if (t.dataset.f) {
       setPath(draft, t.dataset.f, t.value);
       marcar();
-      const m = t.dataset.f.match(/^(.+)\.(numero|titulo)$/);
+      // Al escribir el número de un himno se completa el título
+      const m = t.dataset.f.match(/^(.+)\.numero$/);
       const caja = m && main.querySelector(`[data-himno="${m[1]}"]`);
-      if (caja && catalogo.lista.length) {
-        const h = m[2] === "numero" ? catalogo.porNumero.get(t.value.trim()) : catalogo.porTitulo.get(norm(t.value));
-        const otro = m[2] === "numero" ? "titulo" : "numero";
-        if (h) {
-          const valor = otro === "titulo" ? h.t : String(h.n);
-          setPath(draft, `${m[1]}.${otro}`, valor);
-          caja.querySelector(`[data-f="${m[1]}.${otro}"]`).value = valor;
-        }
-        main.querySelector(`[data-libro="${m[1]}"]`).textContent = libroDe(getPath(draft, `${m[1]}.numero`));
+      if (caja) {
+        const h = catalogo.porNumero.get(t.value.trim());
+        const antes = getPath(draft, `${m[1]}.titulo`);
+        if (h) setPath(draft, `${m[1]}.titulo`, h.t);
+        else if (antes && catalogo.porTitulo.has(norm(antes))) setPath(draft, `${m[1]}.titulo`, "");
+        caja.querySelector("[data-himno-pick]").innerHTML = etiquetaHimno(m[1]);
+        main.querySelector(`[data-libro="${m[1]}"]`).textContent = libroDe(t.value);
       }
     }
   };
@@ -818,6 +881,7 @@ async function vistaEditor(fecha) {
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.pick) return abrirSelector(b.dataset.pick, b.dataset.tipo);
+    if (b.dataset.himnoPick) return abrirHimnos(b.dataset.himnoPick);
     const ref = b.dataset.add || b.dataset.del || b.dataset.up;
     if (b.dataset.add) draft[ref].push(clone(PLANTILLAS[ref]));
     if (b.dataset.del || b.dataset.up) {

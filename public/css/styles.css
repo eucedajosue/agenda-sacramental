@@ -324,6 +324,12 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 .sel-op .cuando { font-size: .78rem; color: var(--text-3); white-space: nowrap; }
 .sel-pie { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .75rem 1rem; border-top: 1px solid var(--line); }
 .sel-form { padding: 1.5rem; }
+.sel-op.himno-op { justify-content: flex-start; }
+.num-himno {
+  flex: none; min-width: 3rem; padding: .3rem .4rem; border-radius: 8px; text-align: center;
+  background: var(--accent-soft); color: var(--accent-text); font-weight: 700; font-size: .85rem;
+}
+.sel-txt { min-width: 0; }
 
 /* Control segmentado */
 .radios { display: inline-flex; padding: 3px; gap: 2px; margin-bottom: 1rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; }
