@@ -1,4 +1,5 @@
 import { store, DEMO } from "./store.js";
+import { SUPERADMINS } from "./firebase-config.js";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -120,6 +121,7 @@ function demoBanner() {
 
 store.onUser(async (user) => {
   S.user = user;
+  S.superadmin = !!user && SUPERADMINS.map((e) => e.toLowerCase()).includes((user.email || "").toLowerCase());
   await cargarSesion();
 });
 
@@ -133,9 +135,17 @@ async function cargarSesion() {
     const bid = perfil?.barrioId;
     if (!bid) return renderBienvenida();
     S.barrio = await store.get(`barrios/${bid}`);
-    S.miembro = S.barrio && (await store.get(`barrios/${bid}/miembros/${S.user.uid}`));
-    if (!S.barrio || !S.miembro) return renderBienvenida();
+    if (!S.barrio) return renderBienvenida();
     S.esAdmin = (S.barrio.admins || []).includes(S.user.uid);
+    if (S.barrio.estado !== "aprobado") {
+      // Un superadministrador aprueba automáticamente sus propios barrios
+      if (!(S.superadmin && S.esAdmin)) return renderBarrioPendiente();
+      await store.set(`barrios/${bid}`, { estado: "aprobado" }, true);
+      S.barrio.estado = "aprobado";
+    }
+    S.miembro = await store.get(`barrios/${bid}/miembros/${S.user.uid}`);
+    if (!S.miembro && S.esAdmin) S.miembro = await inicializarBarrio();
+    if (!S.miembro) return renderBienvenida();
     if (!S.esAdmin && S.miembro.estado !== "activo") return renderPendiente();
 
     const rol = S.miembro.rolId ? await store.get(`${B()}/roles/${S.miembro.rolId}`) : null;
@@ -217,18 +227,32 @@ async function crearBarrio(nombre, estaca) {
   const { uid, email, name } = S.user;
   let codigo = genCodigo();
   while (await store.get(`barrios/${codigo}`)) codigo = genCodigo();
-  await store.set(`barrios/${codigo}`, { nombre, estaca, admins: [uid], creadoEn: now() });
-  await store.set(`barrios/${codigo}/miembros/${uid}`, { nombre: name, email, estado: "activo", rolId: "obispo", creadoEn: now() });
-  for (const [id, rol] of Object.entries(ROLES_INICIALES)) await store.set(`barrios/${codigo}/roles/${id}`, rol);
+  // Queda pendiente hasta que un superadministrador lo apruebe
+  await store.set(`barrios/${codigo}`, {
+    nombre, estaca, admins: [uid], estado: S.superadmin ? "aprobado" : "pendiente", creadoEn: now(), creadoPor: email,
+  });
   await store.set(`users/${uid}`, { barrioId: codigo, email, nombre: name });
   toast(`Barrio registrado. Código: ${codigo}`);
   await cargarSesion();
+}
+
+// Al entrar por primera vez a un barrio aprobado: crea el registro del obispo y los roles iniciales
+async function inicializarBarrio() {
+  const { uid, email, name } = S.user;
+  const base = `barrios/${S.barrio.id}`;
+  const miembro = { nombre: name, email, estado: "activo", rolId: "obispo", creadoEn: now() };
+  await store.set(`${base}/miembros/${uid}`, miembro);
+  if (!(await store.list(`${base}/roles`)).length) {
+    for (const [id, rol] of Object.entries(ROLES_INICIALES)) await store.set(`${base}/roles/${id}`, rol);
+  }
+  return { id: uid, ...miembro };
 }
 
 async function unirseABarrio(codigo) {
   const { uid, email, name } = S.user;
   const barrio = await store.get(`barrios/${codigo}`);
   if (!barrio) return toast("No existe un barrio con ese código.", true);
+  if (barrio.estado !== "aprobado") return toast("Ese barrio todavía no ha sido aprobado. Intenta más tarde.", true);
   if (!(await store.get(`barrios/${codigo}/miembros/${uid}`))) {
     await store.set(`barrios/${codigo}/miembros/${uid}`, { nombre: name, email, estado: "pendiente", creadoEn: now() });
   }
@@ -250,6 +274,33 @@ function renderPendiente() {
     <p><button class="link" id="salir">Salir</button></p>
   </div></div>`;
   document.getElementById("revisar").onclick = cargarSesion;
+  document.getElementById("salir").onclick = () => store.signOut();
+  document.getElementById("cambiar").onclick = () =>
+    intentar(async () => {
+      await store.set(`users/${S.user.uid}`, { barrioId: null }, true);
+      renderBienvenida();
+    });
+}
+
+function renderBarrioPendiente() {
+  const rechazado = S.barrio.estado === "rechazado";
+  $app.innerHTML = `${demoBanner()}
+  <div class="login"><div class="card narrow center">
+    <div class="logo"><span class="ms">${rechazado ? "block" : "hourglass_top"}</span></div>
+    <h2>${rechazado ? "Barrio no aprobado" : "Barrio en revisión"}</h2>
+    <p><strong>${esc(S.barrio.nombre)}</strong></p>
+    <p class="muted">${rechazado
+      ? "El registro de este barrio no fue aprobado. Si crees que es un error, comunícate con el administrador de la app."
+      : S.esAdmin
+        ? "Tu barrio fue registrado y está pendiente de aprobación por el administrador de la app. Cuando lo apruebe, podrás empezar a usarlo."
+        : "Este barrio todavía no ha sido aprobado por el administrador de la app."}</p>
+    <div class="row center">
+      ${rechazado ? "" : `<button class="btn" id="revisar">Volver a revisar</button>`}
+      <button class="btn ghost" id="cambiar">Usar otro código</button>
+    </div>
+    <p><button class="link" id="salir">Salir</button></p>
+  </div></div>`;
+  document.getElementById("revisar")?.addEventListener("click", cargarSesion);
   document.getElementById("salir").onclick = () => store.signOut();
   document.getElementById("cambiar").onclick = () =>
     intentar(async () => {
@@ -288,6 +339,7 @@ function route() {
     participantes: (p.verParticipantes || p.editarParticipantes) && vistaParticipantes,
     usuarios: p.gestionarUsuarios && vistaUsuarios,
     roles: S.esAdmin && vistaRoles,
+    barrios: S.superadmin && vistaBarrios,
   };
   if (vistas[page]) return vistas[page]().catch((e) => (document.getElementById("main").innerHTML = `<p class="error">${esc(mensajeError(e))}</p>`));
   const primera = Object.keys(vistas).find((k) => vistas[k] && k !== "ver");
@@ -301,6 +353,7 @@ function shell(activa) {
     ["participantes", "Participantes", "groups", S.perms.verParticipantes || S.perms.editarParticipantes],
     ["usuarios", "Usuarios", "manage_accounts", S.perms.gestionarUsuarios],
     ["roles", "Roles", "admin_panel_settings", S.esAdmin],
+    ["barrios", "Barrios", "domain", S.superadmin],
   ].filter((t) => t[3]);
   $app.innerHTML = `${demoBanner()}
   <header class="top noprint">
@@ -1030,6 +1083,47 @@ async function vistaRoles() {
     intentar(async () => {
       await store.del(`${B()}/roles/${id}`);
       vistaRoles();
+    });
+  };
+}
+
+// ───────────────────────── Barrios (superadministrador) ─────────────────────────
+
+async function vistaBarrios() {
+  const main = shell("barrios");
+  const barrios = await store.list("barrios");
+  const orden = { pendiente: 0, aprobado: 1, rechazado: 2 };
+  barrios.sort((a, b) => (orden[a.estado] ?? 0) - (orden[b.estado] ?? 0) || (b.creadoEn || "").localeCompare(a.creadoEn || ""));
+  const etiqueta = { pendiente: ["pend", "Pendiente"], aprobado: ["admin", "Aprobado"], rechazado: ["", "Rechazado"] };
+  const pendientes = barrios.filter((b) => (b.estado || "pendiente") === "pendiente").length;
+
+  main.innerHTML = `
+    <div class="bar"><h1>Barrios</h1></div>
+    <p class="muted">Como superadministrador apruebas los barrios nuevos. Un barrio pendiente o rechazado no puede guardar agendas,
+      participantes ni usuarios, así que nadie puede generar consumo sin tu aprobación.
+      ${pendientes ? `<br><strong>${pendientes} pendiente(s) de revisión.</strong>` : ""}</p>
+    ${barrios.map((b) => {
+      const estado = b.estado || "pendiente";
+      const [cls, txt] = etiqueta[estado] || etiqueta.pendiente;
+      return `<div class="card persona ${estado === "pendiente" ? "pendiente" : ""}">
+        <div><strong>${esc(b.nombre)}</strong> <span class="pill ${cls}">${txt}</span>
+          <p class="muted small">${[esc(b.estaca), `Código ${esc(b.id)}`, esc(b.creadoPor), b.creadoEn ? fechaCorta(b.creadoEn.slice(0, 10)) : ""].filter(Boolean).join(" · ")}</p></div>
+        <div class="acciones">
+          ${estado !== "aprobado" ? `<button class="btn sm" data-estado="aprobado" data-id="${b.id}"><span class="ms">check</span>Aprobar</button>` : ""}
+          ${estado !== "rechazado" && b.id !== S.barrio.id ? `<button class="btn danger sm" data-estado="rechazado" data-id="${b.id}">${estado === "aprobado" ? "Suspender" : "Rechazar"}</button>` : ""}
+        </div></div>`;
+    }).join("") || `<p class="muted">No hay barrios registrados.</p>`}`;
+
+  main.onclick = (e) => {
+    const b = e.target.closest("[data-estado]");
+    if (!b) return;
+    const barrio = barrios.find((x) => x.id === b.dataset.id);
+    const nuevo = b.dataset.estado;
+    if (nuevo === "rechazado" && !confirm(`¿${barrio.estado === "aprobado" ? "Suspender" : "Rechazar"} el barrio "${barrio.nombre}"? Sus usuarios dejarán de tener acceso.`)) return;
+    intentar(async () => {
+      await store.set(`barrios/${barrio.id}`, { estado: nuevo }, true);
+      toast(nuevo === "aprobado" ? "Barrio aprobado" : "Barrio rechazado");
+      vistaBarrios();
     });
   };
 }

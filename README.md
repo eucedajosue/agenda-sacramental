@@ -56,6 +56,41 @@ Al final te da una dirección como `https://sacramental-barrio.web.app`. Esa es 
 Otros barrios usan la misma dirección: su obispo registra su barrio y recibe su propio código.
 Los datos de cada barrio están separados.
 
+## Aprobación de barrios (superadministrador)
+
+Para evitar abusos, un barrio nuevo queda **en revisión** hasta que un superadministrador lo apruebe.
+Mientras tanto no puede guardar agendas, participantes ni usuarios, y nadie puede unirse a él.
+
+- Los superadministradores se definen por correo en **dos lugares** que deben coincidir:
+  `esSuperadmin()` en `firestore.rules` (donde se aplica de verdad) y `SUPERADMINS` en
+  `public/js/firebase-config.js` (para mostrar la pestaña en la app).
+- El superadministrador ve la pestaña **Barrios**, donde aprueba, rechaza o suspende barrios.
+- Los barrios que registra un superadministrador quedan aprobados de inmediato.
+
+Las reglas también limitan el tamaño de cada dato (largo de textos, cantidad de anuncios o
+discursantes, campos permitidos), para que nadie pueda guardar documentos enormes.
+
+**Recomendación:** mantén el proyecto en el plan gratuito **Spark**. Si alguien abusa, lo peor que
+pasa es que se alcanza la cuota diaria; no se genera ningún cobro.
+
+## App Check (opcional, protección extra)
+
+Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman directo a Firestore).
+
+1. Crea una clave **reCAPTCHA v3** en https://www.google.com/recaptcha/admin con el dominio
+   `TU_PROYECTO.web.app` (y `localhost` para pruebas). Copia la **clave de sitio**
+   y la **clave secreta**.
+2. Consola de Firebase → **App Check** → **Apps** → tu app web → **reCAPTCHA** → pega la clave secreta → Guardar.
+3. Pega la **clave de sitio** en `APP_CHECK_SITE_KEY` (`public/js/firebase-config.js`) y publica con `firebase deploy`.
+4. Usa la app normalmente un par de días y revisa en **App Check → APIs → Cloud Firestore** que casi todas
+   las peticiones aparezcan como verificadas. Entonces presiona **Aplicar** (*Enforce*).
+   Antes de aplicarlo, App Check solo mide; no bloquea nada.
+
+## Probar las reglas de seguridad
+
+Las reglas se probaron con el emulador de Firestore (37 casos: barrios pendientes, aprobación,
+suspensión, límites de tamaño y permisos). El emulador requiere Java 21 con `firebase-tools` actual.
+
 ## Importar participantes
 
 Desde Excel: **Archivo → Guardar como → CSV**. Columnas: `Nombre, Organización, Edad, Teléfono`

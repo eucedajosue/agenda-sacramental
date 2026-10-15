@@ -6,63 +6,150 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Superadministradores de la app: aprueban o rechazan barrios nuevos.
+    //    Mantener igual que SUPERADMINS en public/js/firebase-config.js.
+    function esSuperadmin() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in ['josue.euceda@gmail.com'];
+    }
+
     function signedIn() { return request.auth != null; }
     function barrio(b) { return get(/databases/$(database)/documents/barrios/$(b)).data; }
+    function aprobado(b) { return barrio(b).get('estado', '') == 'aprobado'; }
     function isAdmin(b) { return signedIn() && request.auth.uid in barrio(b).admins; }
     function miembroPath(b) { return /databases/$(database)/documents/barrios/$(b)/miembros/$(request.auth.uid); }
     function activo(b) {
       return signedIn() && exists(miembroPath(b)) && get(miembroPath(b)).data.estado == 'activo';
     }
     function permiso(b, p) {
-      return isAdmin(b) || (
+      return aprobado(b) && (isAdmin(b) || (
         activo(b)
         && get(miembroPath(b)).data.get('rolId', null) != null
         && get(/databases/$(database)/documents/barrios/$(b)/roles/$(get(miembroPath(b)).data.rolId)).data.permisos.get(p, false) == true
-      );
+      ));
     }
+
+    // ── Validación de tamaños (evita documentos enormes o campos inventados)
+    function datos() { return request.resource.data; }
+    function texto(v, max) { return v is string && v.size() <= max; }
+    function textoOpcional(m, campo, max) { return !(campo in m) || m[campo] == null || texto(m[campo], max); }
+    function lista(m, campo, max) { return !(campo in m) || (m[campo] is list && m[campo].size() <= max); }
 
     // Perfil personal: solo indica a qué barrio pertenece el usuario.
     match /users/{uid} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if signedIn() && request.auth.uid == uid
+        && datos().keys().hasOnly(['barrioId', 'email', 'nombre'])
+        && textoOpcional(datos(), 'barrioId', 10)
+        && textoOpcional(datos(), 'email', 120)
+        && textoOpcional(datos(), 'nombre', 120);
     }
 
     match /barrios/{b} {
       // Cualquier usuario con sesión puede comprobar que un código de barrio existe.
       allow get: if signedIn();
-      allow create: if signedIn() && request.resource.data.admins == [request.auth.uid];
-      allow update: if isAdmin(b) && request.resource.data.admins.size() > 0;
+      allow list: if esSuperadmin();
+
+      // Un barrio nuevo queda "pendiente" hasta que un superadministrador lo apruebe.
+      // (Los barrios que registra un superadministrador quedan aprobados de inmediato.)
+      allow create: if signedIn()
+        && b.matches('^[A-Z0-9]{6}$')
+        && datos().keys().hasOnly(['nombre', 'estaca', 'admins', 'estado', 'creadoEn', 'creadoPor'])
+        && datos().admins == [request.auth.uid]
+        && datos().estado == (esSuperadmin() ? 'aprobado' : 'pendiente')
+        && texto(datos().nombre, 80) && datos().nombre.size() > 0
+        && textoOpcional(datos(), 'estaca', 80)
+        && textoOpcional(datos(), 'creadoEn', 40)
+        && textoOpcional(datos(), 'creadoPor', 120);
+
+      // El superadministrador aprueba o rechaza. El administrador del barrio puede editar
+      // nombre, estaca y administradores, pero no puede aprobarse a sí mismo.
+      allow update: if esSuperadmin() || (
+        isAdmin(b) && aprobado(b)
+        && datos().estado == resource.data.estado
+        && datos().keys().hasOnly(['nombre', 'estaca', 'admins', 'estado', 'creadoEn', 'creadoPor'])
+        && datos().admins is list && datos().admins.size() > 0 && datos().admins.size() <= 10
+        && texto(datos().nombre, 80)
+        && textoOpcional(datos(), 'estaca', 80)
+      );
+      allow delete: if esSuperadmin();
 
       match /miembros/{uid} {
         allow get: if (signedIn() && request.auth.uid == uid) || permiso(b, 'gestionarUsuarios');
         allow list: if permiso(b, 'gestionarUsuarios');
         // Un usuario solo puede crear su propia solicitud, y siempre como "pendiente" y sin rol.
-        allow create: if isAdmin(b) || (
-          signedIn() && request.auth.uid == uid
-          && request.resource.data.estado == 'pendiente'
-          && !('rolId' in request.resource.data)
+        allow create: if aprobado(b) && camposMiembro() && (
+          isAdmin(b) || (
+            signedIn() && request.auth.uid == uid
+            && datos().estado == 'pendiente'
+            && !('rolId' in datos())
+          )
         );
-        allow update, delete: if permiso(b, 'gestionarUsuarios');
+        allow update: if permiso(b, 'gestionarUsuarios') && camposMiembro();
+        allow delete: if permiso(b, 'gestionarUsuarios');
+
+        function camposMiembro() {
+          return datos().keys().hasOnly(['nombre', 'email', 'estado', 'rolId', 'creadoEn'])
+            && datos().estado in ['pendiente', 'activo']
+            && textoOpcional(datos(), 'nombre', 120)
+            && textoOpcional(datos(), 'email', 120)
+            && textoOpcional(datos(), 'rolId', 40)
+            && textoOpcional(datos(), 'creadoEn', 40);
+        }
       }
 
       match /roles/{rolId} {
-        allow read: if activo(b) || isAdmin(b);
-        allow write: if isAdmin(b);
+        allow read: if aprobado(b) && (activo(b) || isAdmin(b));
+        allow create, update: if aprobado(b) && isAdmin(b)
+          && rolId.size() <= 40
+          && datos().keys().hasOnly(['nombre', 'orden', 'permisos'])
+          && texto(datos().nombre, 50)
+          && (!('orden' in datos()) || datos().orden is number)
+          && datos().permisos is map && datos().permisos.size() <= 20;
+        allow delete: if aprobado(b) && isAdmin(b);
       }
 
       match /participantes/{id} {
         allow read: if permiso(b, 'verParticipantes') || permiso(b, 'editarParticipantes') || permiso(b, 'editarAgenda');
-        allow write: if permiso(b, 'editarParticipantes');
+        allow create, update: if permiso(b, 'editarParticipantes')
+          && datos().keys().hasOnly(['nombre', 'organizacion', 'edad'])
+          && texto(datos().nombre, 100) && datos().nombre.size() > 0
+          && textoOpcional(datos(), 'organizacion', 60)
+          && (!('edad' in datos()) || datos().edad == null || (datos().edad is number && datos().edad >= 0 && datos().edad <= 130));
+        allow delete: if permiso(b, 'editarParticipantes');
       }
 
       // Teléfonos separados para que solo los vean los roles con ese permiso.
       match /contactos/{id} {
         allow read: if permiso(b, 'verTelefonos');
-        allow write: if permiso(b, 'editarParticipantes');
+        allow create, update: if permiso(b, 'editarParticipantes')
+          && datos().keys().hasOnly(['telefono'])
+          && textoOpcional(datos(), 'telefono', 30);
+        allow delete: if permiso(b, 'editarParticipantes');
       }
 
       match /reuniones/{fecha} {
         allow read: if permiso(b, 'verAgenda');
-        allow write: if permiso(b, 'editarAgenda');
+        allow create, update: if permiso(b, 'editarAgenda')
+          && fecha.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && datos().keys().hasOnly([
+            'fecha', 'preside', 'dirige', 'visitantes', 'anuncios', 'asuntos',
+            'primerHimno', 'primeraOracion', 'himnoSacramental', 'tipo', 'testimonios',
+            'discursantes1', 'himnoIntermedio', 'discursantes2', 'ultimoHimno', 'ultimaOracion',
+            'notas', 'actualizadoPor', 'actualizadoEn'
+          ])
+          && datos().tipo in ['discursos', 'testimonios']
+          && lista(datos(), 'visitantes', 10)
+          && lista(datos(), 'anuncios', 30)
+          && lista(datos(), 'asuntos', 30)
+          && lista(datos(), 'testimonios', 60)
+          && lista(datos(), 'discursantes1', 10)
+          && lista(datos(), 'discursantes2', 10)
+          && textoOpcional(datos(), 'notas', 3000)
+          && textoOpcional(datos(), 'actualizadoPor', 120)
+          && textoOpcional(datos(), 'actualizadoEn', 40);
+        allow delete: if permiso(b, 'editarAgenda');
       }
     }
   }

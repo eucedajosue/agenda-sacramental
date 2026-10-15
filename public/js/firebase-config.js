@@ -12,3 +12,11 @@ export const firebaseConfig = {
   appId: "",
   measurementId: ""
 };
+
+// Correos de los superadministradores de la app: aprueban o rechazan los barrios nuevos.
+// Debe coincidir con la lista de esSuperadmin() en firestore.rules (allí es donde se aplica de verdad).
+export const SUPERADMINS = ["josue.euceda@gmail.com"];
+
+// App Check (opcional): clave de sitio de reCAPTCHA v3. Déjala vacía para no usarlo.
+// Pasos en el README, sección "App Check".
+export const APP_CHECK_SITE_KEY = "";

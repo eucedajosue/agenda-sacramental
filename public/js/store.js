@@ -1,6 +1,6 @@
 // Capa de datos: la misma interfaz funciona con Firebase (producción)
 // o con localStorage (modo demostración).
-import { firebaseConfig } from "./firebase-config.js";
+import { firebaseConfig, APP_CHECK_SITE_KEY } from "./firebase-config.js";
 
 export const DEMO = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("TU_");
 
@@ -11,6 +11,11 @@ async function firebaseStore() {
   const A = await import(`${FB}/firebase-auth.js`);
   const F = await import(`${FB}/firebase-firestore.js`);
   const app = initializeApp(firebaseConfig);
+  // App Check: solo se aceptan peticiones que vienen de esta app (no de scripts externos)
+  if (APP_CHECK_SITE_KEY) {
+    const C = await import(`${FB}/firebase-app-check.js`);
+    C.initializeAppCheck(app, { provider: new C.ReCaptchaV3Provider(APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
+  }
   const auth = A.getAuth(app);
   const db = F.getFirestore(app);
   const toUser = (u) => u && { uid: u.uid, email: u.email, name: u.displayName || u.email };
