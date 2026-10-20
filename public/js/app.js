@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.13";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.13";
+import { store, DEMO } from "./store.js?v=2026.10.15.14";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.14";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.13";
+const VERSION = "2026.10.15.14";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -1116,6 +1116,16 @@ async function vistaEditor(fecha) {
 
 // ───────────────────────── Agenda: vista para imprimir ─────────────────────────
 
+// Cuadro de testimonios: los nombres ya registrados llenan las celdas (de izquierda a derecha)
+// y las demás quedan en blanco para anotar a mano. Si hay más nombres que celdas, se agregan filas.
+function tablaTestimonios(r) {
+  const nombres = (r.testimonios || []).filter((t) => t.persona?.nombre).map((t) => t.persona.nombre);
+  const filas = Math.max(FILAS_TESTIMONIOS, Math.ceil(nombres.length / COLUMNAS_TESTIMONIOS));
+  return Array.from({ length: filas }, (_, f) =>
+    `<tr>${Array.from({ length: COLUMNAS_TESTIMONIOS }, (_, c) => `<td>${esc(nombres[f * COLUMNAS_TESTIMONIOS + c] || "")}</td>`).join("")}</tr>`
+  ).join("");
+}
+
 async function vistaAgendaImpresa(fecha) {
   const main = shell("agenda");
   const r = await store.get(`${B()}/reuniones/${fecha}`);
@@ -1154,10 +1164,9 @@ async function vistaAgendaImpresa(fecha) {
     ${linea("Himno sacramental", `${himno(r.himnoSacramental)} <span class="muted">· Bendición y reparto de la Santa Cena</span>`)}
     ${r.tipo === "testimonios"
       ? `<h2>Reunión de testimonios</h2>
-         ${(r.testimonios || []).some((t) => t.persona) ? lista(r.testimonios.filter((t) => t.persona), (t) => nom(t.persona)) : ""}
          <table class="registro">
            <thead><tr>${"<th>Nombre</th>".repeat(COLUMNAS_TESTIMONIOS)}</tr></thead>
-           <tbody>${`<tr>${"<td></td>".repeat(COLUMNAS_TESTIMONIOS)}</tr>`.repeat(FILAS_TESTIMONIOS)}</tbody>
+           <tbody>${tablaTestimonios(r)}</tbody>
          </table>
          <p class="muted small">Anote aquí los testimonios durante la reunión y luego regístrelos en la app.</p>`
       : `<h2>Discursos</h2>${discursos(r.discursantes1)}
