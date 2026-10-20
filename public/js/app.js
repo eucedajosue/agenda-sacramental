@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.10";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.10";
+import { store, DEMO } from "./store.js?v=2026.10.15.11";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.11";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.10";
+const VERSION = "2026.10.15.11";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -617,7 +617,7 @@ async function vistaAgendas() {
     return `<div class="fila-reunion">
       <a href="#/ver/${r.id}" class="fr-link">
         <span class="fr-fecha"><b>${d.getDate()}</b><small>${d.toLocaleDateString("es", { month: "short" })}</small></span>
-        <span class="fr-info">${pill(r)}<span class="small muted">${resumen(r)}</span></span>
+        <span class="fr-info">${pill(r)}<span class="small muted">${resumen(r)}${r.asistencia != null && r.asistencia !== "" ? ` · ${esc(r.asistencia)} asistentes` : ""}</span></span>
       </a>
       ${puedeEditar ? `<a class="icon" href="#/agenda/${r.id}" title="Editar"><span class="ms">edit</span></a>` : ""}
     </div>`;
@@ -926,11 +926,14 @@ async function vistaEditor(fecha) {
       <label>Líderes visitantes</label>
       ${filas("visitantes", (p) => `<div class="dos">${txt(p + ".nombre", "Nombre")}${txt(p + ".llamamiento", "Llamamiento (ej. Presidencia de estaca)")}</div>`, "Agregar líder visitante")}`)}
     ${seccion(++n, "Anuncios", filas("anuncios", (p) => `<textarea data-f="${p}.texto" rows="2" placeholder="Anuncio">${esc(getPath(draft, p + ".texto"))}</textarea>`, "Agregar anuncio"))}
-    ${seccion(++n, "Asuntos del barrio", `<p class="muted small">Llamamientos nuevos (sostenimientos), relevos y ordenaciones.</p>
+    ${seccion(++n, "Himno y oración de apertura", himno("primerHimno", "Primer himno") + persona("primeraOracion", "Primera oración", "oracion"))}
+    ${seccion(++n, "Asuntos", `<label class="check estaca"><input type="checkbox" data-check="asuntosEstaca" ${draft.asuntosEstaca ? "checked" : ""}>
+        Hay asuntos de estaca <span class="muted">(se tratan antes de los del barrio)</span></label>
+      <label>Asuntos del barrio</label>
+      <p class="muted small">Llamamientos nuevos (sostenimientos), relevos y ordenaciones.</p>
       ${filas("asuntos", (p) => `<div class="tres">
         <select data-f="${p}.tipo">${TIPOS_ASUNTO.map((t) => `<option ${getPath(draft, p + ".tipo") === t ? "selected" : ""}>${t}</option>`).join("")}</select>
         ${selPersona(p + ".persona")}${txt(p + ".llamamiento", "Llamamiento")}</div>`, "Agregar asunto")}`)}
-    ${seccion(++n, "Himno y oración de apertura", himno("primerHimno", "Primer himno") + persona("primeraOracion", "Primera oración", "oracion"))}
     ${seccion(++n, "Santa Cena", himno("himnoSacramental", "Himno sacramental") + `<p class="muted small">Bendición y reparto de la Santa Cena.</p>`)}
     ${seccion(++n, "Tipo de reunión", `<div class="radios">
         <label><input type="radio" name="tipo" value="discursos" ${disc ? "checked" : ""}> Discursos</label>
@@ -940,6 +943,9 @@ async function vistaEditor(fecha) {
     ${disc ? seccion(++n, "Himno intermedio", himno("himnoIntermedio", "Himno intermedio")) : ""}
     ${disc ? seccion(++n, "Discursantes (después del himno intermedio)", filas("discursantes2", discursante, "Agregar discursante")) : ""}
     ${seccion(++n, "Clausura", himno("ultimoHimno", "Último himno") + persona("ultimaOracion", "Última oración", "oracion"))}
+    ${seccion(++n, "Asistencia", `<div class="field asistencia"><label>Número de asistentes
+        <input type="number" min="0" max="10000" inputmode="numeric" data-f="asistencia" value="${esc(draft.asistencia ?? "")}" placeholder="Ej. 85"></label>
+      <p class="muted small">Se puede registrar después de la reunión.</p></div>`)}
     ${seccion(++n, "Notas", `<textarea data-f="notas" rows="3" placeholder="Notas internas (opcional)">${esc(draft.notas)}</textarea>`)}
     <div class="guardar-bar noprint">
       <span id="estado" class="muted small">${S.dirty ? "Cambios sin guardar" : existente ? "Guardado" : "Nueva agenda"}</span>
@@ -949,6 +955,15 @@ async function vistaEditor(fecha) {
     </div>`;
   };
 
+  // Datos a guardar: la asistencia se guarda como número entero (o vacía)
+  const paraGuardar = (f) => {
+    const a = String(draft.asistencia ?? "").trim();
+    return {
+      ...draft, fecha: f,
+      asistencia: a === "" ? null : Math.min(10000, Math.max(0, parseInt(a, 10) || 0)),
+      actualizadoPor: S.user.name, actualizadoEn: now(),
+    };
+  };
   const actualizarAviso = () => {
     const a = document.getElementById("avisoFaltan");
     if (a) a.innerHTML = avisoFaltantes(draft);
@@ -981,7 +996,10 @@ async function vistaEditor(fecha) {
   };
   main.onchange = (e) => {
     const t = e.target;
-    if (t.name === "tipo") {
+    if (t.dataset.check) {
+      setPath(draft, t.dataset.check, t.checked);
+      marcar();
+    } else if (t.name === "tipo") {
       draft.tipo = t.value;
       marcar();
       render();
@@ -1002,7 +1020,7 @@ async function vistaEditor(fecha) {
       if (!nueva) return;
       return intentar(async () => {
         if (await store.get(`${B()}/reuniones/${nueva}`)) throw new Error(`Ya hay una agenda para el ${fechaLarga(nueva)}.`);
-        await store.set(`${B()}/reuniones/${nueva}`, { ...draft, fecha: nueva, actualizadoPor: S.user.name, actualizadoEn: now() });
+        await store.set(`${B()}/reuniones/${nueva}`, paraGuardar(nueva));
         await store.del(`${B()}/reuniones/${fecha}`);
         S.dirty = false;
         toast(`Agenda movida al ${fechaLarga(nueva)}`);
@@ -1032,7 +1050,7 @@ async function vistaEditor(fecha) {
     if (b.id === "guardar") {
       b.disabled = true;
       await intentar(async () => {
-        await store.set(`${B()}/reuniones/${fecha}`, { ...draft, actualizadoPor: S.user.name, actualizadoEn: now() });
+        await store.set(`${B()}/reuniones/${fecha}`, paraGuardar(fecha));
         S.dirty = false;
         toast("Agenda guardada");
         location.hash = `#/ver/${fecha}`;
@@ -1066,17 +1084,19 @@ async function vistaAgendaImpresa(fecha) {
     <div class="row">${S.perms.editarAgenda ? `<a class="btn ghost" href="#/agenda/${fecha}"><span class="ms">edit</span>Editar</a>` : ""}<button class="btn" onclick="print()"><span class="ms">print</span>Imprimir</button></div></div>
   <article class="hoja">
     <header><h1>Reunión Sacramental</h1>
-      <div><strong>${esc(fechaLarga(fecha))}</strong><br>${esc(S.barrio.nombre)}${S.barrio.estaca ? " · " + esc(S.barrio.estaca) : ""}</div></header>
+      <div><strong>${esc(fechaLarga(fecha))}</strong><br>${esc(S.barrio.nombre)}${S.barrio.estaca ? " · " + esc(S.barrio.estaca) : ""}
+        <br><span class="asistencia-hoja">Asistencia: ${r.asistencia != null && r.asistencia !== "" ? `<strong>${esc(r.asistencia)}</strong>` : `<span class="linea-blanco"></span>`}</span></div></header>
     <div class="par">${linea("Preside", nom(r.preside))}${linea("Dirige", nom(r.dirige))}</div>
     ${r.visitantes?.length ? linea("Visitantes", r.visitantes.map((v) => `${esc(v.nombre)}${v.llamamiento ? ` <span class="muted">(${esc(v.llamamiento)})</span>` : ""}`).join("; ")) : ""}
-    <div class="par">
-      <div><h2>Bienvenida y anuncios</h2>
-        ${lista((r.anuncios || []).filter((a) => a.texto), (a) => esc(a.texto).replace(/\n/g, "<br>"))}</div>
-      <div><h2>Asuntos del barrio</h2>
-        ${lista((r.asuntos || []).filter((a) => a.persona || a.llamamiento), (a) => `<em>${esc(a.tipo)}:</em> <strong>${nom(a.persona)}</strong>${a.llamamiento ? ` — ${esc(a.llamamiento)}` : ""}`)}</div>
-    </div>
-    <h2>Apertura y Santa Cena</h2>
+    <h2>Bienvenida y anuncios</h2>
+    ${lista((r.anuncios || []).filter((a) => a.texto), (a) => esc(a.texto).replace(/\n/g, "<br>"))}
+    <h2>Apertura</h2>
     <div class="par">${linea("Primer himno", himno(r.primerHimno))}${linea("Primera oración", nom(r.primeraOracion))}</div>
+    <h2>Asuntos</h2>
+    ${r.asuntosEstaca ? `<p class="asunto-estaca"><strong>Asuntos de estaca</strong> <span class="muted">· se tratan primero</span></p>` : ""}
+    ${r.asuntosEstaca ? `<p class="subtitulo-asuntos">Asuntos del barrio</p>` : ""}
+    ${lista((r.asuntos || []).filter((a) => a.persona || a.llamamiento), (a) => `<em>${esc(a.tipo)}:</em> <strong>${nom(a.persona)}</strong>${a.llamamiento ? ` — ${esc(a.llamamiento)}` : ""}`)}
+    <h2>Santa Cena</h2>
     ${linea("Himno sacramental", `${himno(r.himnoSacramental)} <span class="muted">· Bendición y reparto de la Santa Cena</span>`)}
     ${r.tipo === "testimonios"
       ? `<h2>Reunión de testimonios</h2>

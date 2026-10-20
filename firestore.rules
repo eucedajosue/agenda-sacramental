@@ -149,8 +149,11 @@ service cloud.firestore {
             'fecha', 'preside', 'dirige', 'visitantes', 'anuncios', 'asuntos',
             'primerHimno', 'primeraOracion', 'himnoSacramental', 'tipo', 'testimonios',
             'discursantes1', 'himnoIntermedio', 'discursantes2', 'ultimoHimno', 'ultimaOracion',
-            'notas', 'actualizadoPor', 'actualizadoEn'
+            'notas', 'actualizadoPor', 'actualizadoEn', 'asistencia', 'asuntosEstaca'
           ])
+          && (!('asistencia' in datos()) || datos().asistencia == null
+              || (datos().asistencia is int && datos().asistencia >= 0 && datos().asistencia <= 10000))
+          && (!('asuntosEstaca' in datos()) || datos().asuntosEstaca is bool)
           && datos().tipo in ['discursos', 'testimonios']
           && lista(datos(), 'visitantes', 10)
           && lista(datos(), 'anuncios', 30)

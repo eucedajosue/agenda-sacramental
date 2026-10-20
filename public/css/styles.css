@@ -378,6 +378,8 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 .rol .titulo { font: 700 1rem var(--sans); margin-bottom: .75rem; }
 .check { display: flex; gap: .7rem; align-items: center; font-size: .875rem; font-weight: 400; color: var(--text); padding: .35rem 0; margin: 0; cursor: pointer; }
 .check input { width: 17px; min-height: 17px; flex: none; margin: 0; }
+.check.estaca { margin-bottom: 1rem; padding: .6rem .8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.asistencia input { max-width: 10rem; }
 
 /* ───────────── Diálogos y avisos ───────────── */
 dialog {
@@ -410,6 +412,10 @@ dialog::backdrop { background: rgba(20, 20, 15, .35); backdrop-filter: blur(2px)
 .hoja ol { margin: .1rem 0; padding-left: 1.3rem; }
 .hoja li { margin: .1rem 0; }
 .hoja .muted { color: #888; }
+.hoja .asunto-estaca { margin: .15rem 0; }
+.hoja .subtitulo-asuntos { margin: .3rem 0 0; font-weight: 600; font-size: .9em; color: #444; }
+.hoja .linea-blanco { display: inline-block; width: 4.5rem; border-bottom: 1px solid #999; height: 1em; vertical-align: -2px; }
+.hoja .asistencia-hoja { display: inline-block; margin-top: .15rem; }
 .registro { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .6rem 0 .3rem; font-size: .88rem; }
 .registro th, .registro td { border: 1px solid #b5b5b5; padding: .3rem .5rem; text-align: center; }
 .registro th { background: #f3f5f8; color: #1e3a5f; font-weight: 600; }
@@ -433,6 +439,8 @@ dialog::backdrop { background: rgba(20, 20, 15, .35); backdrop-filter: blur(2px)
   .registro { break-inside: auto; }
   .registro tr { break-inside: avoid; }
   .registro th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .registro td { height: 1.8rem; }
+  .registro td { height: 1.65rem; }
+  .hoja h2 { margin: .55rem 0 .2rem; }
+  .hoja .linea { padding: .1rem 0; }
   @page { margin: 1.2cm; }
 }

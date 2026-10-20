@@ -125,7 +125,7 @@ Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman 
 
 ## Probar las reglas de seguridad
 
-Las reglas se probaron con el emulador de Firestore (55 casos: barrios pendientes, aprobación,
+Las reglas se probaron con el emulador de Firestore (60 casos: barrios pendientes, aprobación,
 suspensión, límites de tamaño, permisos y catálogo de himnos). El emulador requiere Java 21 con `firebase-tools` actual.
 
 ## Importar participantes
