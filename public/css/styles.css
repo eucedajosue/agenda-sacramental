@@ -416,6 +416,8 @@ dialog::backdrop { background: rgba(20, 20, 15, .35); backdrop-filter: blur(2px)
 .hoja .subtitulo-asuntos { margin: .3rem 0 0; font-weight: 600; font-size: .9em; color: #444; }
 .hoja .linea-blanco { display: inline-block; width: 4.5rem; border-bottom: 1px solid #999; height: 1em; vertical-align: -2px; }
 .hoja .asistencia-hoja { display: inline-block; margin-top: .15rem; }
+.hoja .titulo-hoja { text-align: left; }
+.hoja .titulo-hoja span { display: block; font-size: .9rem; color: #555; margin-top: .1rem; }
 .registro { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .6rem 0 .3rem; font-size: .88rem; }
 .registro th, .registro td { border: 1px solid #b5b5b5; padding: .3rem .5rem; text-align: center; }
 .registro th { background: #f3f5f8; color: #1e3a5f; font-weight: 600; }

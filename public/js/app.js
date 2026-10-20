@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.11";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.11";
+import { store, DEMO } from "./store.js?v=2026.10.15.12";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.12";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.11";
+const VERSION = "2026.10.15.12";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -1083,8 +1083,9 @@ async function vistaAgendaImpresa(fecha) {
   <div class="bar noprint"><a href="#/agenda" class="btn text"><span class="ms">arrow_back</span>Agendas</a>
     <div class="row">${S.perms.editarAgenda ? `<a class="btn ghost" href="#/agenda/${fecha}"><span class="ms">edit</span>Editar</a>` : ""}<button class="btn" onclick="print()"><span class="ms">print</span>Imprimir</button></div></div>
   <article class="hoja">
-    <header><h1>Reunión Sacramental</h1>
-      <div><strong>${esc(fechaLarga(fecha))}</strong><br>${esc(S.barrio.nombre)}${S.barrio.estaca ? " · " + esc(S.barrio.estaca) : ""}
+    <header><div class="titulo-hoja"><h1>Reunión Sacramental</h1>
+        <span>${esc(S.barrio.nombre)}${S.barrio.estaca ? " · " + esc(S.barrio.estaca) : ""}</span></div>
+      <div><strong>${esc(fechaLarga(fecha))}</strong>
         <br><span class="asistencia-hoja">Asistencia: ${r.asistencia != null && r.asistencia !== "" ? `<strong>${esc(r.asistencia)}</strong>` : `<span class="linea-blanco"></span>`}</span></div></header>
     <div class="par">${linea("Preside", nom(r.preside))}${linea("Dirige", nom(r.dirige))}</div>
     ${r.visitantes?.length ? linea("Visitantes", r.visitantes.map((v) => `${esc(v.nombre)}${v.llamamiento ? ` <span class="muted">(${esc(v.llamamiento)})</span>` : ""}`).join("; ")) : ""}
