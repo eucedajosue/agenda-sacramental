@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.12";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.12";
+import { store, DEMO } from "./store.js?v=2026.10.15.13";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.13";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.12";
+const VERSION = "2026.10.15.13";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -912,6 +912,14 @@ async function vistaEditor(fecha) {
   const discursante = (p) => `${selPersona(p + ".persona", "discurso")}
     <div class="dos">${txt(p + ".tema", "Tema")}${txt(p + ".link", "Link de referencia (opcional)", "url")}</div>`;
   const seccion = (n, titulo, cuerpo) => `<section class="card"><h2><span class="paso">${n}</span>${titulo}</h2>${cuerpo}</section>`;
+  const chipsTestimonios = () => {
+    let n = 0;
+    const chips = draft.testimonios.map((t, i) => t.persona ? `<span class="chip">
+        <span class="chip-n">${++n}</span>${esc(t.persona.nombre)}${t.persona.id ? "" : ` <span class="muted" title="No está en la lista de participantes">· no registrado</span>`}
+        <button type="button" class="chip-x" data-quitar-testimonio="${i}" title="Quitar" aria-label="Quitar ${esc(t.persona.nombre)}"><span class="ms">close</span></button>
+      </span>` : "").join("");
+    return chips || `<p class="muted small">Todavía no hay testimonios registrados.</p>`;
+  };
 
   const render = () => {
     const disc = draft.tipo === "discursos";
@@ -938,7 +946,15 @@ async function vistaEditor(fecha) {
     ${seccion(++n, "Tipo de reunión", `<div class="radios">
         <label><input type="radio" name="tipo" value="discursos" ${disc ? "checked" : ""}> Discursos</label>
         <label><input type="radio" name="tipo" value="testimonios" ${disc ? "" : "checked"}> Testimonios</label></div>
-      ${disc ? "" : `<label>Personas que compartieron su testimonio</label>${filas("testimonios", (p) => selPersona(p + ".persona"), "Agregar testimonio")}`}`)}
+      ${disc ? "" : `<label>Personas que compartieron su testimonio</label>
+        <div class="chips-testimonios" id="chipsTestimonios">${chipsTestimonios()}</div>
+        <form id="formTestimonio" class="testimonio-rapido" autocomplete="off">
+          <input id="nuevoTestimonio" list="dlParticipantes" placeholder="Escribe el nombre y presiona Enter" enterkeyhint="enter">
+          <button class="btn" title="Agregar"><span class="ms">add</span>Agregar</button>
+        </form>
+        <datalist id="dlParticipantes">${participantes.filter((p) => p.activo !== false).map((p) => `<option value="${esc(p.nombre)}">`).join("")}</datalist>
+        <p class="muted small">Si el nombre coincide con un participante registrado, queda en su historial.
+          <button type="button" class="btn text sm" id="buscarTestimonio"><span class="ms">search</span>Buscar en la lista</button></p>`}`)}
     ${disc ? seccion(++n, "Discursantes", filas("discursantes1", discursante, "Agregar discursante")) : ""}
     ${disc ? seccion(++n, "Himno intermedio", himno("himnoIntermedio", "Himno intermedio")) : ""}
     ${disc ? seccion(++n, "Discursantes (después del himno intermedio)", filas("discursantes2", discursante, "Agregar discursante")) : ""}
@@ -973,6 +989,33 @@ async function vistaEditor(fecha) {
     const e = document.getElementById("estado");
     if (e) e.textContent = "Cambios sin guardar";
     actualizarAviso();
+  };
+
+  // ── Testimonios: registro rápido escribiendo el nombre y presionando Enter
+  const refrescarTestimonios = () => {
+    const c = document.getElementById("chipsTestimonios");
+    if (c) c.innerHTML = chipsTestimonios();
+  };
+  const agregarTestimonio = () => {
+    const input = document.getElementById("nuevoTestimonio");
+    const nombre = input.value.trim().replace(/\s+/g, " ").slice(0, 100);
+    if (!nombre) return input.focus();
+    if (draft.testimonios.some((t) => norm(t.persona?.nombre) === norm(nombre))) {
+      toast(`${nombre} ya está en la lista`, true);
+      return input.select();
+    }
+    // Si coincide con un participante activo, se vincula para que cuente en su historial
+    const p = participantes.find((x) => x.activo !== false && norm(x.nombre) === norm(nombre));
+    draft.testimonios.push({ persona: p ? { id: p.id, nombre: p.nombre, organizacion: p.organizacion || "" } : { nombre } });
+    marcar();
+    refrescarTestimonios();
+    input.value = "";
+    input.focus();
+  };
+  main.onsubmit = (e) => {
+    if (e.target.id !== "formTestimonio") return;
+    e.preventDefault();
+    agregarTestimonio();
   };
 
   main.oninput = (e) => {
@@ -1010,6 +1053,16 @@ async function vistaEditor(fecha) {
     if (!b) return;
     if (b.dataset.pick) return abrirSelector(b.dataset.pick, b.dataset.tipo);
     if (b.dataset.himnoPick) return abrirHimnos(b.dataset.himnoPick);
+    if (b.dataset.quitarTestimonio !== undefined) {
+      draft.testimonios.splice(+b.dataset.quitarTestimonio, 1);
+      marcar();
+      return refrescarTestimonios();
+    }
+    if (b.id === "buscarTestimonio") {
+      draft.testimonios = draft.testimonios.filter((t) => t.persona);
+      draft.testimonios.push({ persona: null });
+      return abrirSelector(`testimonios.${draft.testimonios.length - 1}.persona`, "");
+    }
     if (b.id === "cambiarFecha" && S.esAdmin) {
       // La fecha es el identificador de la agenda: se copia a la fecha nueva y se borra la anterior
       const nueva = await pedirFecha({

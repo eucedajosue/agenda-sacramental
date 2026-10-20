@@ -348,6 +348,20 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 }
 .sel-txt { min-width: 0; }
 
+/* Testimonios: registro rápido */
+.chips-testimonios { display: flex; flex-wrap: wrap; gap: .4rem; margin: .25rem 0 .75rem; }
+.chips-testimonios > p { margin: 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: .35rem; padding: .25rem .25rem .25rem .3rem; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line); font-size: .9rem;
+}
+.chip-n { min-width: 1.5rem; height: 1.5rem; border-radius: 999px; display: inline-grid; place-items: center; font-size: .75rem; font-weight: 700; background: var(--accent-soft); color: var(--accent-text); }
+.chip-x { width: 26px; height: 26px; border: 0; border-radius: 999px; background: transparent; color: var(--text-3); cursor: pointer; display: grid; place-items: center; }
+.chip-x:hover { background: var(--danger-soft); color: var(--danger); }
+.chip-x .ms { font-size: 16px; }
+.testimonio-rapido { display: flex; gap: .5rem; }
+.testimonio-rapido input { flex: 1; min-width: 0; }
+
 /* Control segmentado */
 .radios { display: inline-flex; padding: 3px; gap: 2px; margin-bottom: 1rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; }
 .radios label {
