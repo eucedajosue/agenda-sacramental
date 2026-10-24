@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.17";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.17";
+import { store, DEMO } from "./store.js?v=2026.10.15.18";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.18";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.17";
+const VERSION = "2026.10.15.18";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -1998,8 +1998,10 @@ async function vistaConsejo(id) {
     draft.revision.forEach((t, i) => (t.estado === "completada" ? completadas : pendientes).push([t, i]));
     const detalle = (t) => [t.cuando ? `Cuándo: ${esc(t.cuando)}` : "", t.como ? `Cómo: ${esc(t.como)}` : ""].filter(Boolean).join(" · ");
     return `
-      ${pendientes.length ? pendientes.map(([t, i]) => `
+      ${pendientes.length ? pendientes.map(([t, i], k) => `
         <div class="tarea-rev" data-idx="${i}">
+          <div class="tarea-cab"><span class="tarea-num">Tarea ${k + 1}</span>
+            <button type="button" class="icon" data-del="revision.${i}" title="Quitar tarea"><span class="ms">close</span></button></div>
           <div class="fila-body">
             <div class="dos">${txt(`revision.${i}.que`, "Tarea")}${txt(`revision.${i}.quien`, "Responsable")}</div>
             ${detalle(t) ? `<p class="muted small" style="margin:0">${detalle(t)}</p>` : ""}
@@ -2008,7 +2010,6 @@ async function vistaConsejo(id) {
               <button type="button" class="btn-completar" data-completar="${i}"><span class="ms">check</span><span class="txt">Marcar como completada</span></button>
             </div>
           </div>
-          <button type="button" class="icon" data-del="revision.${i}" title="Quitar"><span class="ms">close</span></button>
         </div>`).join("")
       : `<p class="muted small">${draft.revision.length ? "No hay tareas pendientes. ¡Todo completado!" : "No hay tareas para revisar."}
           ${draft.revision.length ? "" : `<button type="button" class="btn text sm" id="traerTareas"><span class="ms">history</span>Traer tareas de la reunión anterior</button>`}</p>`}
