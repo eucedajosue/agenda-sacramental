@@ -109,7 +109,7 @@ eliminar los que no tengan reuniones).
 Cada reunión registra: tipo, fecha y hora, quién preside y dirige, participantes (se escriben y Enter), revisión de
 tareas de la reunión anterior, puntos a tratar, tareas y asignaciones (qué, quién, cuándo y cómo) y notas o acuerdos.
 Al crear una reunión, las tareas de la reunión anterior **del mismo tipo** —y las que quedaron sin completar— se cargan
-solas para revisarlas (Pendiente, En curso o Completada). Cada reunión tiene su hoja para imprimir.
+solas para revisarlas: las pendientes arriba, y al marcarlas como completadas pasan a un grupo plegable abajo. Cada reunión tiene su hoja para imprimir.
 
 Permisos nuevos: **Ver reuniones de obispado y consejos** y **Crear y editar reuniones de obispado y consejos**. Los
 administradores los tienen siempre; para los demás roles hay que marcarlos en **Roles**. Solo los administradores

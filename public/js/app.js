@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.15";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.15";
+import { store, DEMO } from "./store.js?v=2026.10.15.16";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.16";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.15";
+const VERSION = "2026.10.15.16";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -1658,7 +1658,6 @@ async function vistaRoles() {
 // ───────────────────────── Reuniones (obispado, consejos y otros tipos) ─────────────────────────
 
 const TIPOS_REUNION_INICIALES = ["Reunión de obispado", "Consejo de barrio", "Consejo de barrio para la juventud"];
-const ESTADOS_TAREA = [["pendiente", "Pendiente"], ["en-curso", "En curso"], ["completada", "Completada"]];
 const PLANTILLAS_CONSEJO = {
   revision: { que: "", quien: "", cuando: "", como: "", estado: "pendiente", nota: "" },
   puntos: { texto: "" },
@@ -1992,6 +1991,39 @@ async function vistaConsejo(id) {
         <button type="button" class="icon" data-del="${lista}.${i}" title="Quitar"><span class="ms">close</span></button>
       </div></div>`).join("")}
     <button type="button" class="btn ghost sm" data-add="${lista}"><span class="ms">add</span>${textoAgregar}</button>`;
+  // Revisión de tareas: arriba las pendientes (se completan con un clic) y abajo, plegadas, las completadas
+  const revisionHTML = () => {
+    const pendientes = [];
+    const completadas = [];
+    draft.revision.forEach((t, i) => (t.estado === "completada" ? completadas : pendientes).push([t, i]));
+    const detalle = (t) => [t.cuando ? `Cuándo: ${esc(t.cuando)}` : "", t.como ? `Cómo: ${esc(t.como)}` : ""].filter(Boolean).join(" · ");
+    return `
+      ${pendientes.length ? pendientes.map(([t, i]) => `
+        <div class="tarea-rev" data-idx="${i}">
+          <button type="button" class="check-tarea" data-completar="${i}" title="Marcar como completada" aria-label="Marcar como completada"><span class="ms">radio_button_unchecked</span></button>
+          <div class="fila-body">
+            <div class="dos">${txt(`revision.${i}.que`, "Tarea")}${txt(`revision.${i}.quien`, "Responsable")}</div>
+            ${detalle(t) ? `<p class="muted small" style="margin:0">${detalle(t)}</p>` : ""}
+            ${txt(`revision.${i}.nota`, "Comentario (opcional)")}
+          </div>
+          <button type="button" class="icon" data-del="revision.${i}" title="Quitar"><span class="ms">close</span></button>
+        </div>`).join("")
+      : `<p class="muted small">${draft.revision.length ? "No hay tareas pendientes. ¡Todo completado!" : "No hay tareas para revisar."}
+          ${draft.revision.length ? "" : `<button type="button" class="btn text sm" id="traerTareas"><span class="ms">history</span>Traer tareas de la reunión anterior</button>`}</p>`}
+      <button type="button" class="btn ghost sm" data-add="revision"><span class="ms">add</span>Agregar tarea a revisar</button>
+      ${completadas.length ? `<details class="completadas" ${S.verCompletadas ? "open" : ""}>
+        <summary>Completadas (${completadas.length})</summary>
+        ${completadas.map(([t, i]) => `
+          <div class="tarea-hecha" data-idx="${i}">
+            <button type="button" class="check-tarea hecho" data-reabrir="${i}" title="Volver a pendiente" aria-label="Volver a pendiente"><span class="ms">check_circle</span></button>
+            <div><span class="tachado">${esc(t.que)}</span>${t.quien ? ` <span class="muted small">· ${esc(t.quien)}</span>` : ""}
+              ${t.nota ? `<p class="muted small" style="margin:0">${esc(t.nota)}</p>` : ""}</div>
+          </div>`).join("")}
+      </details>` : ""}`;
+  };
+  const refrescarRevision = () => {
+    document.getElementById("revisionCont").innerHTML = revisionHTML();
+  };
   const chips = () => {
     let n = 0;
     return draft.participantes.map((p, i) => p?.nombre ? `<span class="chip"><span class="chip-n">${++n}</span>${esc(p.nombre)}
@@ -2017,14 +2049,7 @@ async function vistaConsejo(id) {
         <button class="btn"><span class="ms">add</span>Agregar</button>
       </form>
       <datalist id="dlPart">${participantes.filter((p) => p.activo !== false).map((p) => `<option value="${esc(p.nombre)}">`).join("")}</datalist>`)}
-    ${seccion(++n, "Revisión de tareas de la reunión anterior", `
-      ${draft.revision.length ? "" : `<p class="muted small">No hay tareas para revisar.
-        <button type="button" class="btn text sm" id="traerTareas"><span class="ms">history</span>Traer tareas de la reunión anterior</button></p>`}
-      ${filas("revision", (p, t) => `
-        <div class="dos">${txt(p + ".que", "Tarea")}${txt(p + ".quien", "Responsable")}</div>
-        ${t.cuando || t.como ? `<p class="muted small" style="margin:0">${[t.cuando ? `Cuándo: ${esc(t.cuando)}` : "", t.como ? `Cómo: ${esc(t.como)}` : ""].filter(Boolean).join(" · ")}</p>` : ""}
-        <div class="radios estados">${ESTADOS_TAREA.map(([v, l]) => `<label><input type="radio" name="estado-${p}" data-estado="${p}.estado" value="${v}" ${t.estado === v ? "checked" : ""}> ${l}</label>`).join("")}</div>
-        ${txt(p + ".nota", "Comentario (opcional)")}`, "Agregar tarea a revisar")}`)}
+    ${seccion(++n, "Revisión de tareas de la reunión anterior", `<div id="revisionCont">${revisionHTML()}</div>`)}
     ${seccion(++n, "Puntos a tratar", filas("puntos", (p) => `<textarea data-f="${p}.texto" rows="2" placeholder="Punto a tratar">${esc(getPath(draft, p + ".texto"))}</textarea>`, "Agregar punto"))}
     ${seccion(++n, "Tareas y asignaciones para la próxima reunión", filas("tareas", (p) => `
         <textarea data-f="${p}.que" rows="2" placeholder="Qué se debe hacer">${esc(getPath(draft, p + ".que"))}</textarea>
@@ -2062,10 +2087,7 @@ async function vistaConsejo(id) {
   };
   main.onchange = (e) => {
     const t = e.target;
-    if (t.dataset.estado) {
-      setPath(draft, t.dataset.estado, t.value);
-      marcar();
-    } else if (t.dataset.tipoReunion !== undefined) {
+    if (t.dataset.tipoReunion !== undefined) {
       const tipo = tipos.find((x) => x.id === t.value);
       draft.tipoId = tipo.id;
       draft.tipoNombre = tipo.nombre;
@@ -2079,6 +2101,10 @@ async function vistaConsejo(id) {
       main.querySelector(".bar p").textContent = fechaLarga(f) + hora(draft);
     }
   };
+  // Recordar si el grupo de tareas completadas está abierto (el evento "toggle" no burbujea)
+  main.addEventListener("toggle", (e) => {
+    if (e.target.classList?.contains("completadas")) S.verCompletadas = e.target.open;
+  }, true);
   main.onsubmit = (e) => {
     if (e.target.id !== "formPart") return;
     e.preventDefault();
@@ -2104,6 +2130,31 @@ async function vistaConsejo(id) {
       draft.participantes.splice(+b.dataset.quitarPart, 1);
       marcar();
       document.getElementById("chipsPart").innerHTML = chips();
+      return;
+    }
+    if (b.dataset.completar !== undefined) {
+      // Se marca, se desliza fuera de las pendientes y pasa al grupo de completadas
+      const i = +b.dataset.completar;
+      const fila = b.closest(".tarea-rev");
+      draft.revision[i].estado = "completada";
+      marcar();
+      b.classList.add("hecho");
+      b.querySelector(".ms").textContent = "check_circle";
+      await new Promise((r) => setTimeout(r, 180));
+      fila.style.height = `${fila.offsetHeight}px`;
+      void fila.offsetHeight;
+      fila.classList.add("saliendo");
+      await new Promise((r) => setTimeout(r, 400));
+      refrescarRevision();
+      document.querySelector("#revisionCont .completadas summary")?.classList.add("destello");
+      return;
+    }
+    if (b.dataset.reabrir !== undefined) {
+      const i = +b.dataset.reabrir;
+      draft.revision[i].estado = "pendiente";
+      marcar();
+      refrescarRevision();
+      document.querySelector(`#revisionCont .tarea-rev[data-idx="${i}"]`)?.classList.add("destello");
       return;
     }
     if (b.id === "traerTareas") {
@@ -2165,8 +2216,9 @@ async function vistaConsejoImpreso(id) {
   const vacio = `<span class="muted">—</span>`;
   const nom = (p) => (p?.nombre ? esc(p.nombre) : vacio);
   const linea = (label, valor) => `<div class="linea"><span>${label}</span><div>${valor}</div></div>`;
-  const estado = (v) => ESTADOS_TAREA.find(([k]) => k === v)?.[1] || "Pendiente";
-  const revision = (r.revision || []).filter((t) => t.que);
+  const estado = (v) => (v === "completada" ? "Completada" : "Pendiente");
+  // Pendientes primero, luego las completadas
+  const revision = (r.revision || []).filter((t) => t.que).sort((a, b) => (a.estado === "completada") - (b.estado === "completada"));
   const tareas = (r.tareas || []).filter((t) => t.que);
   const puntos = (r.puntos || []).filter((p) => p.texto);
   const blancos = (n, cols) => `<tr>${"<td></td>".repeat(cols)}</tr>`.repeat(n);

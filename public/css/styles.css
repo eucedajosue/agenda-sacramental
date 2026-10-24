@@ -373,8 +373,29 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 .tres-iguales { display: grid; gap: .5rem; }
 .tres-iguales > * { min-width: 0; }
 @media (min-width: 640px) { .tres-iguales { grid-template-columns: 1fr 1fr 1fr; } }
-.radios.estados { margin: 0; }
-.radios.estados label { height: 30px; padding: 0 .75rem; font-size: .8rem; }
+.tarea-rev { display: flex; gap: .5rem; align-items: flex-start; padding: .75rem 0; border-top: 1px solid var(--line); }
+.tarea-rev:first-child { border-top: 0; padding-top: 0; }
+.check-tarea {
+  flex: none; width: 40px; height: 40px; margin-top: .1rem; display: grid; place-items: center; border: 0; border-radius: 999px;
+  background: transparent; color: var(--text-3); cursor: pointer; transition: color .15s, background .15s, transform .15s;
+}
+.check-tarea .ms { font-size: 26px; }
+.check-tarea:hover { color: var(--ok); background: var(--ok-soft); }
+.check-tarea.hecho { color: var(--ok); transform: scale(1.12); }
+.check-tarea.hecho .ms { font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24; }
+.tarea-rev.saliendo {
+  height: 0 !important; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; transform: translateX(28px); overflow: hidden;
+  transition: height .3s ease .1s, padding .3s ease .1s, border-width .3s ease .1s, opacity .25s ease, transform .25s ease;
+}
+.completadas { margin-top: 1rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.completadas summary { cursor: pointer; padding: .6rem .9rem; font-weight: 600; font-size: .9rem; color: var(--text-2); border-radius: 10px; }
+.completadas[open] summary { border-bottom: 1px solid var(--line); border-radius: 10px 10px 0 0; }
+.tarea-hecha { display: flex; gap: .35rem; align-items: flex-start; padding: .35rem .5rem; }
+.tarea-hecha .check-tarea { width: 34px; height: 34px; margin: 0; }
+.tarea-hecha .check-tarea .ms { font-size: 22px; }
+.tarea-hecha > div { padding-top: .35rem; }
+.tachado { text-decoration: line-through; color: var(--text-2); }
+.destello { animation: destello 1.2s ease-out; }
 .tipos-lista { display: grid; gap: .4rem; }
 .tipo-fila { display: flex; gap: .35rem; align-items: center; }
 .tipo-fila input { flex: 1; min-width: 0; }
