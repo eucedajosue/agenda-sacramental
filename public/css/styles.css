@@ -362,6 +362,23 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 .testimonio-rapido { display: flex; gap: .5rem; }
 .testimonio-rapido input { flex: 1; min-width: 0; }
 
+/* Reuniones (obispado, consejos…) */
+.filtro-tipos { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 .5rem; }
+.chip-filtro {
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--text-2); border-radius: 999px;
+  padding: .35rem .85rem; font: 500 .85rem var(--sans); cursor: pointer;
+}
+.chip-filtro:hover { color: var(--text); }
+.chip-filtro.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tres-iguales { display: grid; gap: .5rem; }
+.tres-iguales > * { min-width: 0; }
+@media (min-width: 640px) { .tres-iguales { grid-template-columns: 1fr 1fr 1fr; } }
+.radios.estados { margin: 0; }
+.radios.estados label { height: 30px; padding: 0 .75rem; font-size: .8rem; }
+.tipos-lista { display: grid; gap: .4rem; }
+.tipo-fila { display: flex; gap: .35rem; align-items: center; }
+.tipo-fila input { flex: 1; min-width: 0; }
+
 /* Control segmentado */
 .radios { display: inline-flex; padding: 3px; gap: 2px; margin-bottom: 1rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; }
 .radios label {
@@ -431,6 +448,12 @@ dialog::backdrop { background: rgba(20, 20, 15, .35); backdrop-filter: blur(2px)
 .hoja .linea-blanco { display: inline-block; width: 4.5rem; border-bottom: 1px solid #999; height: 1em; vertical-align: -2px; }
 .hoja .asistencia-hoja { display: inline-block; margin-top: .15rem; }
 .hoja .titulo-hoja { text-align: left; }
+.tabla-tareas { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .4rem 0; font-size: .88rem; }
+.tabla-tareas th, .tabla-tareas td { border: 1px solid #b5b5b5; padding: .3rem .45rem; text-align: left; vertical-align: top; word-wrap: break-word; }
+.tabla-tareas th { background: #f3f5f8; color: #1e3a5f; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.tabla-tareas td { height: 1.9rem; }
+.tabla-tareas th:first-child { width: 38%; }
+.hoja .lineas-notas { height: 6rem; background: repeating-linear-gradient(transparent 0 1.9rem, #c9c9c9 1.9rem calc(1.9rem + 1px)); }
 .hoja .titulo-hoja span { display: block; font-size: .9rem; color: #555; margin-top: .1rem; }
 .registro { width: 100%; border-collapse: collapse; table-layout: fixed; margin: .6rem 0 .3rem; font-size: .88rem; }
 .registro th, .registro td { border: 1px solid #b5b5b5; padding: .3rem .5rem; text-align: center; }

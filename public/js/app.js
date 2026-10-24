@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.14";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.14";
+import { store, DEMO } from "./store.js?v=2026.10.15.15";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.15";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.14";
+const VERSION = "2026.10.15.15";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -13,6 +13,8 @@ const PERMISOS = [
   ["editarParticipantes", "Agregar, editar e importar participantes"],
   ["verTelefonos", "Ver teléfonos"],
   ["gestionarUsuarios", "Aprobar usuarios y asignar roles"],
+  ["verConsejos", "Ver reuniones de obispado y consejos"],
+  ["editarConsejos", "Crear y editar reuniones de obispado y consejos"],
 ];
 
 const todos = Object.fromEntries(PERMISOS.map(([k]) => [k, true]));
@@ -25,7 +27,7 @@ const ROLES_INICIALES = {
   },
   secretario: {
     nombre: "Secretario", orden: 4,
-    permisos: { verAgenda: true, editarAgenda: false, verParticipantes: true, editarParticipantes: true, verTelefonos: false, gestionarUsuarios: false },
+    permisos: { verAgenda: true, editarAgenda: false, verParticipantes: true, editarParticipantes: true, verTelefonos: false, gestionarUsuarios: false, verConsejos: false, editarConsejos: false },
   },
 };
 
@@ -464,13 +466,16 @@ function route() {
   const vistas = {
     agenda: p.verAgenda && (() => (arg && p.editarAgenda ? vistaEditor(arg) : arg ? vistaAgendaImpresa(arg) : vistaAgendas())),
     ver: p.verAgenda && (() => vistaAgendaImpresa(arg)),
+    reuniones: (p.verConsejos || p.editarConsejos) && vistaConsejos,
+    consejo: (p.verConsejos || p.editarConsejos) && (() => (p.editarConsejos ? vistaConsejo(arg) : vistaConsejoImpreso(arg))),
+    verconsejo: (p.verConsejos || p.editarConsejos) && (() => vistaConsejoImpreso(arg)),
     participantes: (p.verParticipantes || p.editarParticipantes) && vistaParticipantes,
     usuarios: p.gestionarUsuarios && vistaUsuarios,
     roles: S.esAdmin && vistaRoles,
     barrios: S.superadmin && vistaBarrios,
   };
   if (vistas[page]) return vistas[page]().catch((e) => (document.getElementById("main").innerHTML = `<p class="error">${esc(mensajeError(e))}</p>`));
-  const primera = Object.keys(vistas).find((k) => vistas[k] && k !== "ver");
+  const primera = Object.keys(vistas).find((k) => vistas[k] && !["ver", "consejo", "verconsejo"].includes(k));
   if (primera) location.hash = "#/" + primera;
   else shell("").innerHTML = `<div class="card narrow center"><p>Tu rol (${esc(S.rolNombre || "sin rol")}) todavía no tiene permisos asignados.</p></div>`;
 }
@@ -478,6 +483,7 @@ function route() {
 function shell(activa) {
   const tabs = [
     ["agenda", "Agenda", "event_note", S.perms.verAgenda],
+    ["reuniones", "Reuniones", "forum", S.perms.verConsejos || S.perms.editarConsejos],
     ["participantes", "Participantes", "groups", S.perms.verParticipantes || S.perms.editarParticipantes],
     ["usuarios", "Usuarios", "manage_accounts", S.perms.gestionarUsuarios],
     ["roles", "Roles", "admin_panel_settings", S.esAdmin],
@@ -1647,6 +1653,548 @@ async function vistaRoles() {
       vistaRoles();
     });
   };
+}
+
+// ───────────────────────── Reuniones (obispado, consejos y otros tipos) ─────────────────────────
+
+const TIPOS_REUNION_INICIALES = ["Reunión de obispado", "Consejo de barrio", "Consejo de barrio para la juventud"];
+const ESTADOS_TAREA = [["pendiente", "Pendiente"], ["en-curso", "En curso"], ["completada", "Completada"]];
+const PLANTILLAS_CONSEJO = {
+  revision: { que: "", quien: "", cuando: "", como: "", estado: "pendiente", nota: "" },
+  puntos: { texto: "" },
+  tareas: { que: "", quien: "", cuando: "", como: "" },
+};
+const personaDe = (p) => ({ id: p.id, nombre: p.nombre, organizacion: p.organizacion || "" });
+const hora = (r) => (r.hora ? ` · ${r.hora}` : "");
+
+// Tipos de reunión del barrio. Si todavía no hay ninguno, el administrador recibe los iniciales.
+async function cargarTiposReunion() {
+  let tipos = await store.list(`${B()}/tiposReunion`);
+  if (!tipos.length && S.esAdmin) {
+    for (const [i, nombre] of TIPOS_REUNION_INICIALES.entries()) {
+      await store.set(`${B()}/tiposReunion/${store.newId(`${B()}/tiposReunion`)}`, { nombre, orden: i + 1 });
+    }
+    tipos = await store.list(`${B()}/tiposReunion`);
+  }
+  return tipos.sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99) || a.nombre.localeCompare(b.nombre, "es"));
+}
+const nombreTipo = (tipos, r) => tipos.find((t) => t.id === r.tipoId)?.nombre || r.tipoNombre || "Reunión";
+
+// Selector de persona reutilizable: busca entre los participantes activos o usa un nombre escrito.
+// Devuelve la persona, null para quitar la selección, o undefined si se cancela.
+function pedirPersona(participantes, { actual = null } = {}) {
+  return new Promise((resolve) => {
+    document.getElementById("dlgElegir")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgElegir";
+    d.className = "selector";
+    d.innerHTML = `
+      <div class="sel-head">
+        <input type="search" placeholder="Buscar por nombre u organización" autocomplete="off">
+        <button type="button" class="icon" data-cerrar title="Cerrar"><span class="ms">close</span></button>
+      </div>
+      <div class="sel-lista"></div>
+      <div class="sel-pie">
+        ${actual ? `<button type="button" class="btn text sm" data-quitar>Quitar selección</button>` : "<span></span>"}
+        <button type="button" class="btn ghost sm" data-libre hidden><span class="ms">edit</span><span></span></button>
+      </div>`;
+    document.body.appendChild(d);
+    const $q = d.querySelector("input");
+    const $l = d.querySelector(".sel-lista");
+    const $libre = d.querySelector("[data-libre]");
+    const activos = participantes.filter((p) => p.activo !== false).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    let vis = [];
+    let resultado;
+    const pintar = () => {
+      const t = norm($q.value);
+      const todos = activos.filter((p) => !t || norm(p.nombre).includes(t) || norm(p.organizacion).includes(t));
+      vis = todos.slice(0, 80);
+      $l.innerHTML = vis.map((p, i) => `
+        <button type="button" class="sel-op ${p.id === actual?.id ? "actual" : ""}" data-i="${i}">
+          <span><b>${esc(p.nombre)}</b><small>${esc(p.organizacion || "Sin organización")}</small></span>
+        </button>`).join("")
+        + (todos.length > vis.length ? `<p class="muted small center">Y ${todos.length - vis.length} más. Escribe para afinar la búsqueda.</p>` : "")
+        + (todos.length ? "" : `<p class="muted center">Nadie coincide con la búsqueda.</p>`);
+      const q = $q.value.trim();
+      $libre.hidden = !q;
+      $libre.querySelector("span:last-child").textContent = `Usar "${q}"`;
+    };
+    const elegir = (p) => {
+      resultado = p;
+      d.close();
+    };
+    $q.oninput = pintar;
+    $q.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (vis[0]) elegir(personaDe(vis[0]));
+      else if (!$libre.hidden) $libre.click();
+    };
+    $l.onclick = (e) => {
+      const o = e.target.closest("[data-i]");
+      if (o) elegir(personaDe(vis[+o.dataset.i]));
+    };
+    $libre.onclick = () => elegir({ nombre: $q.value.trim().slice(0, 100) });
+    d.querySelector("[data-cerrar]").onclick = () => d.close();
+    d.querySelector("[data-quitar]")?.addEventListener("click", () => elegir(null));
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(resultado);
+    });
+    pintar();
+    d.showModal();
+    $q.focus();
+  });
+}
+
+// Selects de día, mes y año (para fechas que no son necesariamente domingo)
+function selectsFecha(fecha, prefijo) {
+  const [a, m, d] = (fecha || hoyISO()).split("-").map(Number);
+  const hoyA = new Date().getFullYear();
+  const anios = [...new Set([hoyA - 1, hoyA, hoyA + 1, a])].sort();
+  return `<div class="fecha-otra">
+    <label>Día<select data-${prefijo}="d">${Array.from({ length: 31 }, (_, i) => `<option ${i + 1 === d ? "selected" : ""}>${i + 1}</option>`).join("")}</select></label>
+    <label>Mes<select data-${prefijo}="m">${MESES.map((n, i) => `<option value="${i + 1}" ${i + 1 === m ? "selected" : ""}>${n}</option>`).join("")}</select></label>
+    <label>Año<select data-${prefijo}="a">${anios.map((x) => `<option ${x === a ? "selected" : ""}>${x}</option>`).join("")}</select></label>
+  </div>`;
+}
+function leerFecha(cont, prefijo) {
+  const [d, m, a] = ["d", "m", "a"].map((k) => Number(cont.querySelector(`[data-${prefijo}="${k}"]`).value));
+  if (new Date(a, m - 1, d).getDate() !== d) return null;
+  return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+// Tareas pendientes de la reunión anterior del mismo tipo, para revisarlas en la nueva
+function tareasParaRevisar(juntas, tipoId, fecha) {
+  const previa = juntas
+    .filter((j) => j.tipoId === tipoId && j.fecha < fecha)
+    .sort((a, b) => b.fecha.localeCompare(a.fecha))[0];
+  if (!previa) return [];
+  const sinTerminar = (previa.revision || []).filter((t) => t.estado !== "completada" && t.que);
+  const nuevas = (previa.tareas || []).filter((t) => t.que).map((t) => ({ ...PLANTILLAS_CONSEJO.revision, ...t, estado: "pendiente", nota: "" }));
+  return [...sinTerminar.map((t) => ({ ...PLANTILLAS_CONSEJO.revision, ...t })), ...nuevas];
+}
+
+async function vistaConsejos() {
+  const main = shell("reuniones");
+  const [tipos, juntas] = await Promise.all([cargarTiposReunion(), store.list(`${B()}/consejos`)]);
+  const puedeEditar = S.perms.editarConsejos;
+  const hoy = hoyISO();
+  S.filtroTipo ??= "";
+  if (S.filtroTipo && !tipos.some((t) => t.id === S.filtroTipo)) S.filtroTipo = "";
+
+  const tarjeta = (j) => {
+    const tareas = (j.tareas || []).filter((t) => t.que).length;
+    const pendientes = (j.revision || []).filter((t) => t.que && t.estado !== "completada").length;
+    return `<div class="card reunion">
+      <div><strong>${esc(fechaLarga(j.fecha))}${esc(hora(j))}</strong> <span class="pill discursos">${esc(nombreTipo(tipos, j))}</span>
+        <p class="muted small">${[j.preside?.nombre ? `Preside: ${esc(j.preside.nombre)}` : "",
+          `${(j.puntos || []).filter((p) => p.texto).length} puntos`, `${tareas} tarea${tareas === 1 ? "" : "s"} asignada${tareas === 1 ? "" : "s"}`,
+          pendientes ? `${pendientes} por revisar sin completar` : ""].filter(Boolean).join(" · ")}</p></div>
+      <div class="acciones">
+        <a class="btn ghost sm" href="#/verconsejo/${j.id}">Ver</a>
+        ${puedeEditar ? `<a class="btn sm" href="#/consejo/${j.id}">Editar</a>` : ""}
+      </div></div>`;
+  };
+
+  const pintar = () => {
+    const lista = juntas.filter((j) => !S.filtroTipo || j.tipoId === S.filtroTipo);
+    const proximas = lista.filter((j) => j.fecha >= hoy).sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.hora || "").localeCompare(b.hora || ""));
+    const pasadas = lista.filter((j) => j.fecha < hoy).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    document.getElementById("listaConsejos").innerHTML = `
+      <h3>Próximas</h3>
+      ${proximas.length ? proximas.map(tarjeta).join("") : `<p class="muted">No hay reuniones próximas.</p>`}
+      ${pasadas.length ? `<h3>Anteriores</h3>${pasadas.map(tarjeta).join("")}` : ""}`;
+    main.querySelectorAll("[data-filtro]").forEach((b) => b.classList.toggle("on", b.dataset.filtro === S.filtroTipo));
+  };
+
+  main.innerHTML = `
+    <div class="bar"><h1>Reuniones</h1>
+      ${S.esAdmin ? `<button class="btn ghost sm" id="tiposReunion"><span class="ms">tune</span>Tipos de reunión</button>` : ""}</div>
+    <div class="filtro-tipos">
+      <button type="button" class="chip-filtro" data-filtro="">Todas</button>
+      ${tipos.map((t) => `<button type="button" class="chip-filtro" data-filtro="${t.id}">${esc(t.nombre)}</button>`).join("")}
+    </div>
+    <div id="listaConsejos"></div>
+    ${puedeEditar && tipos.length ? `<button class="fab" id="fabConsejo"><span class="ms">add</span><span>Nueva reunión</span></button>` : ""}
+    ${!tipos.length ? `<p class="aviso">Todavía no hay tipos de reunión. Un administrador debe abrir esta sección para crearlos.</p>` : ""}`;
+  pintar();
+
+  main.onclick = async (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.filtro !== undefined) {
+      S.filtroTipo = b.dataset.filtro;
+      return pintar();
+    }
+    if (b.id === "tiposReunion") {
+      await gestionarTipos(tipos, juntas);
+      return vistaConsejos();
+    }
+    if (b.id === "fabConsejo") {
+      const datos = await pedirNuevaReunion(tipos);
+      if (!datos) return;
+      intentar(async () => {
+        const id = store.newId(`${B()}/consejos`);
+        await store.set(`${B()}/consejos/${id}`, {
+          ...datos, preside: null, dirige: null, participantes: [],
+          revision: tareasParaRevisar(juntas, datos.tipoId, datos.fecha), puntos: [], tareas: [], notas: "",
+          creadoEn: now(), actualizadoPor: S.user.name, actualizadoEn: now(),
+        });
+        location.hash = `#/consejo/${id}`;
+      });
+    }
+  };
+}
+
+// Ventana para crear una reunión: tipo, fecha y hora
+function pedirNuevaReunion(tipos) {
+  return new Promise((resolve) => {
+    document.getElementById("dlgNuevaReunion")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgNuevaReunion";
+    d.innerHTML = `<form class="stack">
+      <h2>Nueva reunión</h2>
+      <label>Tipo de reunión<select name="tipo">${tipos.map((t) => `<option value="${t.id}" ${t.id === S.filtroTipo ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}</select></label>
+      ${selectsFecha(hoyISO(), "nf")}
+      <label>Hora (opcional)<input name="hora" maxlength="20" placeholder="Ej. 7:00 p. m."></label>
+      <p class="error small" hidden></p>
+      <div class="row end"><button type="button" class="btn ghost" data-cancelar>Cancelar</button><button class="btn">Crear</button></div>
+    </form>`;
+    document.body.appendChild(d);
+    const form = d.querySelector("form");
+    let resultado = null;
+    d.querySelector("[data-cancelar]").onclick = () => d.close();
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const fecha = leerFecha(form, "nf");
+      if (!fecha) {
+        const err = form.querySelector(".error");
+        err.textContent = "Esa fecha no existe. Revisa el día y el mes.";
+        err.hidden = false;
+        return;
+      }
+      const tipo = tipos.find((t) => t.id === form.tipo.value);
+      resultado = { tipoId: tipo.id, tipoNombre: tipo.nombre, fecha, hora: form.hora.value.trim() };
+      d.close();
+    };
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(resultado);
+    });
+    d.showModal();
+  });
+}
+
+// Administración de tipos de reunión (solo administradores)
+function gestionarTipos(tipos, juntas) {
+  return new Promise((resolve) => {
+    document.getElementById("dlgTipos")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgTipos";
+    const usos = (id) => juntas.filter((j) => j.tipoId === id).length;
+    const pintar = () => {
+      d.innerHTML = `<div class="stack">
+        <h2>Tipos de reunión</h2>
+        <p class="muted small">Cambia el nombre y presiona fuera del campo para guardarlo. Solo se pueden eliminar los tipos sin reuniones.</p>
+        <div class="tipos-lista">${tipos.map((t, i) => `
+          <div class="tipo-fila">
+            <input value="${esc(t.nombre)}" data-renombrar="${t.id}" maxlength="60">
+            <button type="button" class="icon" data-subir="${i}" title="Subir" ${i ? "" : "disabled"}><span class="ms">arrow_upward</span></button>
+            <button type="button" class="icon danger" data-borrar="${t.id}" title="${usos(t.id) ? `Tiene ${usos(t.id)} reunión(es)` : "Eliminar"}" ${usos(t.id) ? "disabled" : ""}><span class="ms">delete</span></button>
+          </div>`).join("") || `<p class="muted">No hay tipos todavía.</p>`}</div>
+        <form class="row" id="formTipo"><input name="nombre" placeholder="Nuevo tipo, ej. Comité de bienestar" maxlength="60" required><button class="btn"><span class="ms">add</span>Agregar</button></form>
+        <div class="row end"><button type="button" class="btn ghost" data-cerrar>Listo</button></div>
+      </div>`;
+    };
+    const guardarOrden = () => Promise.all(tipos.map((t, i) => store.set(`${B()}/tiposReunion/${t.id}`, { nombre: t.nombre, orden: i + 1 })));
+    d.addEventListener("change", (e) => {
+      const id = e.target.dataset.renombrar;
+      const nombre = e.target.value.trim();
+      const t = tipos.find((x) => x.id === id);
+      if (!t || !nombre || nombre === t.nombre) return;
+      intentar(async () => {
+        await store.set(`${B()}/tiposReunion/${id}`, { nombre, orden: t.orden ?? tipos.indexOf(t) + 1 });
+        t.nombre = nombre;
+        toast("Nombre actualizado");
+      });
+    });
+    d.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const nombre = e.target.nombre.value.trim();
+      if (!nombre) return;
+      intentar(async () => {
+        const id = store.newId(`${B()}/tiposReunion`);
+        const t = { nombre, orden: tipos.length + 1 };
+        await store.set(`${B()}/tiposReunion/${id}`, t);
+        tipos.push({ id, ...t });
+        pintar();
+        d.querySelector("#formTipo input").focus();
+      });
+    });
+    d.addEventListener("click", async (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.dataset.cerrar !== undefined) return d.close();
+      if (b.dataset.subir) {
+        const i = +b.dataset.subir;
+        [tipos[i - 1], tipos[i]] = [tipos[i], tipos[i - 1]];
+        tipos.forEach((t, k) => (t.orden = k + 1));
+        pintar();
+        return intentar(guardarOrden);
+      }
+      if (b.dataset.borrar) {
+        const t = tipos.find((x) => x.id === b.dataset.borrar);
+        if (usos(t.id) || !(await confirmar({ titulo: `¿Eliminar el tipo "${t.nombre}"?`, aceptar: "Eliminar", peligro: true }))) return;
+        intentar(async () => {
+          await store.del(`${B()}/tiposReunion/${t.id}`);
+          tipos.splice(tipos.indexOf(t), 1);
+          pintar();
+        });
+      }
+    });
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve();
+    });
+    pintar();
+    document.body.appendChild(d);
+    d.showModal();
+  });
+}
+
+async function vistaConsejo(id) {
+  const main = shell("reuniones");
+  const [doc, tipos, participantes, juntas] = await Promise.all([
+    store.get(`${B()}/consejos/${id || "-"}`),
+    cargarTiposReunion(),
+    cargarParticipantes(true).catch(() => []),
+    store.list(`${B()}/consejos`),
+  ]);
+  if (!doc) {
+    main.innerHTML = `<p>No se encontró la reunión. <a href="#/reuniones">Volver</a></p>`;
+    return;
+  }
+  const draft = { participantes: [], revision: [], puntos: [], tareas: [], notas: "", hora: "", ...doc };
+  delete draft.id;
+
+  const txt = (path, ph = "") => `<input data-f="${path}" value="${esc(getPath(draft, path))}" placeholder="${ph}">`;
+  const picker = (path) => {
+    const v = getPath(draft, path);
+    return `<button type="button" class="picker" data-elegir="${path}">${v?.nombre
+      ? `<span>${esc(v.nombre)}${v.id ? "" : ` <span class="muted">· no registrado</span>`}</span>` : `<span class="muted">Seleccionar…</span>`}<span class="ms">unfold_more</span></button>`;
+  };
+  const filas = (lista, render, textoAgregar) => `
+    ${draft[lista].map((_, i) => `<div class="fila">
+      <span class="num">${i + 1}</span><div class="fila-body">${render(`${lista}.${i}`, draft[lista][i])}</div>
+      <div class="fila-acc">
+        <button type="button" class="icon" data-up="${lista}.${i}" title="Subir" ${i ? "" : "disabled"}><span class="ms">arrow_upward</span></button>
+        <button type="button" class="icon" data-del="${lista}.${i}" title="Quitar"><span class="ms">close</span></button>
+      </div></div>`).join("")}
+    <button type="button" class="btn ghost sm" data-add="${lista}"><span class="ms">add</span>${textoAgregar}</button>`;
+  const chips = () => {
+    let n = 0;
+    return draft.participantes.map((p, i) => p?.nombre ? `<span class="chip"><span class="chip-n">${++n}</span>${esc(p.nombre)}
+        <button type="button" class="chip-x" data-quitar-part="${i}" title="Quitar"><span class="ms">close</span></button></span>` : "").join("")
+      || `<p class="muted small">Todavía no hay participantes.</p>`;
+  };
+  const seccion = (n, titulo, cuerpo) => `<section class="card"><h2><span class="paso">${n}</span>${titulo}</h2>${cuerpo}</section>`;
+
+  const render = () => {
+    let n = 0;
+    main.innerHTML = `
+    <div class="bar"><div><a href="#/reuniones" class="btn text"><span class="ms">arrow_back</span>Reuniones</a>
+      <h1>${esc(nombreTipo(tipos, draft))}</h1><p class="muted" style="margin:0">${esc(fechaLarga(draft.fecha))}${esc(hora(draft))}</p></div></div>
+    ${seccion(++n, "Datos de la reunión", `
+      <div class="field"><label>Tipo de reunión<select data-tipo-reunion>${tipos.map((t) => `<option value="${t.id}" ${t.id === draft.tipoId ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}</select></label></div>
+      <label>Fecha</label>${selectsFecha(draft.fecha, "fc")}
+      <div class="field" style="margin-top:.75rem"><label>Hora<input data-f="hora" maxlength="20" value="${esc(draft.hora)}" placeholder="Ej. 7:00 p. m."></label></div>
+      <div class="dos"><div class="field"><label>Preside</label>${picker("preside")}</div><div class="field"><label>Dirige</label>${picker("dirige")}</div></div>`)}
+    ${seccion(++n, "Participantes", `
+      <div class="chips-testimonios" id="chipsPart">${chips()}</div>
+      <form id="formPart" class="testimonio-rapido" autocomplete="off">
+        <input id="nuevoPart" list="dlPart" placeholder="Escribe el nombre y presiona Enter" enterkeyhint="enter">
+        <button class="btn"><span class="ms">add</span>Agregar</button>
+      </form>
+      <datalist id="dlPart">${participantes.filter((p) => p.activo !== false).map((p) => `<option value="${esc(p.nombre)}">`).join("")}</datalist>`)}
+    ${seccion(++n, "Revisión de tareas de la reunión anterior", `
+      ${draft.revision.length ? "" : `<p class="muted small">No hay tareas para revisar.
+        <button type="button" class="btn text sm" id="traerTareas"><span class="ms">history</span>Traer tareas de la reunión anterior</button></p>`}
+      ${filas("revision", (p, t) => `
+        <div class="dos">${txt(p + ".que", "Tarea")}${txt(p + ".quien", "Responsable")}</div>
+        ${t.cuando || t.como ? `<p class="muted small" style="margin:0">${[t.cuando ? `Cuándo: ${esc(t.cuando)}` : "", t.como ? `Cómo: ${esc(t.como)}` : ""].filter(Boolean).join(" · ")}</p>` : ""}
+        <div class="radios estados">${ESTADOS_TAREA.map(([v, l]) => `<label><input type="radio" name="estado-${p}" data-estado="${p}.estado" value="${v}" ${t.estado === v ? "checked" : ""}> ${l}</label>`).join("")}</div>
+        ${txt(p + ".nota", "Comentario (opcional)")}`, "Agregar tarea a revisar")}`)}
+    ${seccion(++n, "Puntos a tratar", filas("puntos", (p) => `<textarea data-f="${p}.texto" rows="2" placeholder="Punto a tratar">${esc(getPath(draft, p + ".texto"))}</textarea>`, "Agregar punto"))}
+    ${seccion(++n, "Tareas y asignaciones para la próxima reunión", filas("tareas", (p) => `
+        <textarea data-f="${p}.que" rows="2" placeholder="Qué se debe hacer">${esc(getPath(draft, p + ".que"))}</textarea>
+        <div class="tres-iguales">
+          <input data-f="${p}.quien" list="dlPart" value="${esc(getPath(draft, p + ".quien"))}" placeholder="Quién">
+          ${txt(p + ".cuando", "Cuándo (ej. 15 de noviembre)")}
+          ${txt(p + ".como", "Cómo")}
+        </div>`, "Agregar tarea"))}
+    ${seccion(++n, "Notas y acuerdos", `<textarea data-f="notas" rows="4" placeholder="Notas, acuerdos o comentarios de la reunión">${esc(draft.notas)}</textarea>`)}
+    <div class="guardar-bar noprint">
+      <span id="estado" class="muted small">${S.dirty ? "Cambios sin guardar" : "Guardado"}</span>
+      ${S.esAdmin ? `<button class="icon danger" id="eliminarConsejo" title="Eliminar reunión (solo administradores)"><span class="ms">delete</span></button>` : ""}
+      <a class="btn ghost" href="#/verconsejo/${id}"><span class="ms">print</span>Ver</a>
+      <button class="btn" id="guardarConsejo"><span class="ms">save</span>Guardar</button>
+    </div>`;
+  };
+  const marcar = () => {
+    S.dirty = true;
+    const e = document.getElementById("estado");
+    if (e) e.textContent = "Cambios sin guardar";
+  };
+  const agregarParticipante = (p) => {
+    if (draft.participantes.some((x) => norm(x?.nombre) === norm(p.nombre))) return toast(`${p.nombre} ya está en la lista`, true);
+    draft.participantes.push(p);
+    marcar();
+    document.getElementById("chipsPart").innerHTML = chips();
+  };
+
+  main.oninput = (e) => {
+    const t = e.target;
+    if (t.dataset.f) {
+      setPath(draft, t.dataset.f, t.value);
+      marcar();
+    }
+  };
+  main.onchange = (e) => {
+    const t = e.target;
+    if (t.dataset.estado) {
+      setPath(draft, t.dataset.estado, t.value);
+      marcar();
+    } else if (t.dataset.tipoReunion !== undefined) {
+      const tipo = tipos.find((x) => x.id === t.value);
+      draft.tipoId = tipo.id;
+      draft.tipoNombre = tipo.nombre;
+      marcar();
+      main.querySelector("h1").textContent = tipo.nombre;
+    } else if (t.dataset.fc) {
+      const f = leerFecha(main, "fc");
+      if (!f) return toast("Esa fecha no existe. Revisa el día y el mes.", true);
+      draft.fecha = f;
+      marcar();
+      main.querySelector(".bar p").textContent = fechaLarga(f) + hora(draft);
+    }
+  };
+  main.onsubmit = (e) => {
+    if (e.target.id !== "formPart") return;
+    e.preventDefault();
+    const input = document.getElementById("nuevoPart");
+    const nombre = input.value.trim().replace(/\s+/g, " ").slice(0, 100);
+    if (!nombre) return;
+    const p = participantes.find((x) => x.activo !== false && norm(x.nombre) === norm(nombre));
+    agregarParticipante(p ? personaDe(p) : { nombre });
+    input.value = "";
+    input.focus();
+  };
+  main.onclick = async (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.elegir) {
+      const p = await pedirPersona(participantes, { actual: getPath(draft, b.dataset.elegir) });
+      if (p === undefined) return;
+      setPath(draft, b.dataset.elegir, p);
+      marcar();
+      return render();
+    }
+    if (b.dataset.quitarPart !== undefined) {
+      draft.participantes.splice(+b.dataset.quitarPart, 1);
+      marcar();
+      document.getElementById("chipsPart").innerHTML = chips();
+      return;
+    }
+    if (b.id === "traerTareas") {
+      const traidas = tareasParaRevisar(juntas.filter((j) => j.id !== id), draft.tipoId, draft.fecha);
+      if (!traidas.length) return toast("La reunión anterior de este tipo no tiene tareas.", true);
+      draft.revision.push(...traidas);
+      marcar();
+      return render();
+    }
+    const ref = b.dataset.add || b.dataset.del || b.dataset.up;
+    if (b.dataset.add) draft[ref].push(clone(PLANTILLAS_CONSEJO[ref]));
+    if (b.dataset.del || b.dataset.up) {
+      const [lista, i] = ref.split(".");
+      const [item] = draft[lista].splice(+i, 1);
+      if (b.dataset.up) draft[lista].splice(+i - 1, 0, item);
+    }
+    if (ref) {
+      marcar();
+      return render();
+    }
+    if (b.id === "eliminarConsejo" && S.esAdmin) {
+      if (!(await confirmar({
+        titulo: "¿Eliminar esta reunión?",
+        mensaje: `Se eliminará la ${esc(nombreTipo(tipos, draft))} del <strong>${esc(fechaLarga(draft.fecha))}</strong> con sus puntos y tareas. Esta acción no se puede deshacer.`,
+        aceptar: "Eliminar reunión", peligro: true,
+      }))) return;
+      return intentar(async () => {
+        await store.del(`${B()}/consejos/${id}`);
+        S.dirty = false;
+        toast("Reunión eliminada");
+        location.hash = "#/reuniones";
+      });
+    }
+    if (b.id === "guardarConsejo") {
+      b.disabled = true;
+      await intentar(async () => {
+        await store.set(`${B()}/consejos/${id}`, {
+          ...draft,
+          participantes: draft.participantes.filter((p) => p?.nombre),
+          actualizadoPor: S.user.name, actualizadoEn: now(),
+        });
+        S.dirty = false;
+        toast("Reunión guardada");
+        location.hash = `#/verconsejo/${id}`;
+      });
+      b.disabled = false;
+    }
+  };
+  render();
+}
+
+async function vistaConsejoImpreso(id) {
+  const main = shell("reuniones");
+  const [r, tipos] = await Promise.all([store.get(`${B()}/consejos/${id || "-"}`), cargarTiposReunion()]);
+  if (!r) {
+    main.innerHTML = `<p>No se encontró la reunión. <a href="#/reuniones">Volver</a></p>`;
+    return;
+  }
+  const vacio = `<span class="muted">—</span>`;
+  const nom = (p) => (p?.nombre ? esc(p.nombre) : vacio);
+  const linea = (label, valor) => `<div class="linea"><span>${label}</span><div>${valor}</div></div>`;
+  const estado = (v) => ESTADOS_TAREA.find(([k]) => k === v)?.[1] || "Pendiente";
+  const revision = (r.revision || []).filter((t) => t.que);
+  const tareas = (r.tareas || []).filter((t) => t.que);
+  const puntos = (r.puntos || []).filter((p) => p.texto);
+  const blancos = (n, cols) => `<tr>${"<td></td>".repeat(cols)}</tr>`.repeat(n);
+  main.innerHTML = `
+  <div class="bar noprint"><a href="#/reuniones" class="btn text"><span class="ms">arrow_back</span>Reuniones</a>
+    <div class="row">${S.perms.editarConsejos ? `<a class="btn ghost" href="#/consejo/${id}"><span class="ms">edit</span>Editar</a>` : ""}<button class="btn" onclick="print()"><span class="ms">print</span>Imprimir</button></div></div>
+  <article class="hoja">
+    <header><div class="titulo-hoja"><h1>${esc(nombreTipo(tipos, r))}</h1>
+        <span>${esc(S.barrio.nombre)}${S.barrio.estaca ? " · " + esc(S.barrio.estaca) : ""}</span></div>
+      <div><strong>${esc(fechaLarga(r.fecha))}</strong>${r.hora ? `<br>${esc(r.hora)}` : ""}</div></header>
+    <div class="par">${linea("Preside", nom(r.preside))}${linea("Dirige", nom(r.dirige))}</div>
+    ${linea("Participantes", (r.participantes || []).filter((p) => p?.nombre).map((p) => esc(p.nombre)).join(" · ") || vacio)}
+    <h2>Revisión de tareas de la reunión anterior</h2>
+    ${revision.length ? `<table class="tabla-tareas">
+      <thead><tr><th>Tarea</th><th>Responsable</th><th>Estado</th><th>Comentario</th></tr></thead>
+      <tbody>${revision.map((t) => `<tr><td>${esc(t.que)}</td><td>${esc(t.quien)}</td><td>${estado(t.estado)}</td><td>${esc(t.nota)}</td></tr>`).join("")}</tbody>
+    </table>` : `<p class="muted">No hay tareas pendientes de revisar.</p>`}
+    <h2>Puntos a tratar</h2>
+    ${puntos.length ? `<ol>${puntos.map((p) => `<li>${esc(p.texto).replace(/\n/g, "<br>")}</li>`).join("")}</ol>` : vacio}
+    <h2>Tareas y asignaciones para la próxima reunión</h2>
+    <table class="tabla-tareas">
+      <thead><tr><th>Qué</th><th>Quién</th><th>Cuándo</th><th>Cómo</th></tr></thead>
+      <tbody>${tareas.map((t) => `<tr><td>${esc(t.que).replace(/\n/g, "<br>")}</td><td>${esc(t.quien)}</td><td>${esc(t.cuando)}</td><td>${esc(t.como)}</td></tr>`).join("")}${blancos(Math.max(2, 5 - tareas.length), 4)}</tbody>
+    </table>
+    <h2>Notas y acuerdos</h2>
+    ${r.notas ? `<p>${esc(r.notas).replace(/\n/g, "<br>")}</p>` : `<div class="lineas-notas"></div>`}
+    ${r.actualizadoPor ? `<p class="muted small noprint">Última edición: ${esc(r.actualizadoPor)}, ${new Date(r.actualizadoEn).toLocaleString("es")}</p>` : ""}
+  </article>`;
 }
 
 // ───────────────────────── Barrios (superadministrador) ─────────────────────────

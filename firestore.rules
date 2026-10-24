@@ -141,6 +141,41 @@ service cloud.firestore {
         allow delete: if aprobado(b) && isAdmin(b);
       }
 
+      // Tipos de reunión (obispado, consejos…): los ven quienes ven reuniones; solo el administrador los cambia
+      match /tiposReunion/{t} {
+        allow read: if permiso(b, 'verConsejos') || permiso(b, 'editarConsejos');
+        allow create, update: if aprobado(b) && isAdmin(b)
+          && t.size() <= 40
+          && datos().keys().hasOnly(['nombre', 'orden'])
+          && texto(datos().nombre, 60) && datos().nombre.size() > 0
+          && (!('orden' in datos()) || datos().orden is number);
+        allow delete: if aprobado(b) && isAdmin(b);
+      }
+
+      // Reuniones de obispado, consejos y otros tipos
+      match /consejos/{id} {
+        allow read: if permiso(b, 'verConsejos') || permiso(b, 'editarConsejos');
+        allow create, update: if permiso(b, 'editarConsejos')
+          && id.size() <= 40
+          && datos().keys().hasOnly([
+            'tipoId', 'tipoNombre', 'fecha', 'hora', 'preside', 'dirige', 'participantes',
+            'revision', 'puntos', 'tareas', 'notas', 'creadoEn', 'actualizadoPor', 'actualizadoEn'
+          ])
+          && texto(datos().tipoId, 40)
+          && textoOpcional(datos(), 'tipoNombre', 60)
+          && datos().fecha is string && datos().fecha.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && textoOpcional(datos(), 'hora', 20)
+          && lista(datos(), 'participantes', 80)
+          && lista(datos(), 'revision', 80)
+          && lista(datos(), 'puntos', 80)
+          && lista(datos(), 'tareas', 80)
+          && textoOpcional(datos(), 'notas', 5000)
+          && textoOpcional(datos(), 'creadoEn', 40)
+          && textoOpcional(datos(), 'actualizadoPor', 120)
+          && textoOpcional(datos(), 'actualizadoEn', 40);
+        allow delete: if aprobado(b) && isAdmin(b);
+      }
+
       match /reuniones/{fecha} {
         allow read: if permiso(b, 'verAgenda');
         allow create, update: if permiso(b, 'editarAgenda')

@@ -100,6 +100,21 @@ Firestore también lo exigen. Siempre se pide confirmación.
 Los administradores también pueden **Cambiar fecha** desde el editor: la agenda (incluidos los cambios sin guardar)
 se mueve a la nueva fecha. No se permite elegir una fecha que ya tenga agenda.
 
+## Reuniones de obispado, consejos y otros tipos
+
+La pestaña **Reuniones** sirve para la reunión de obispado, el consejo de barrio, el consejo de barrio para la
+juventud y cualquier otro tipo que el administrador cree en **Tipos de reunión** (agregar, renombrar, ordenar, y
+eliminar los que no tengan reuniones).
+
+Cada reunión registra: tipo, fecha y hora, quién preside y dirige, participantes (se escriben y Enter), revisión de
+tareas de la reunión anterior, puntos a tratar, tareas y asignaciones (qué, quién, cuándo y cómo) y notas o acuerdos.
+Al crear una reunión, las tareas de la reunión anterior **del mismo tipo** —y las que quedaron sin completar— se cargan
+solas para revisarlas (Pendiente, En curso o Completada). Cada reunión tiene su hoja para imprimir.
+
+Permisos nuevos: **Ver reuniones de obispado y consejos** y **Crear y editar reuniones de obispado y consejos**. Los
+administradores los tienen siempre; para los demás roles hay que marcarlos en **Roles**. Solo los administradores
+pueden eliminar reuniones y administrar los tipos.
+
 ## Participantes inactivos
 
 En **Participantes**, el botón **Desactivar** saca a una persona de los selectores de la agenda (por ejemplo, si se mudó)
@@ -125,7 +140,7 @@ Rechaza las peticiones que no vienen de la app (por ejemplo, scripts que llaman 
 
 ## Probar las reglas de seguridad
 
-Las reglas se probaron con el emulador de Firestore (60 casos: barrios pendientes, aprobación,
+Las reglas se probaron con el emulador de Firestore (71 casos: barrios pendientes, aprobación,
 suspensión, límites de tamaño, permisos y catálogo de himnos). El emulador requiere Java 21 con `firebase-tools` actual.
 
 ## Importar participantes
