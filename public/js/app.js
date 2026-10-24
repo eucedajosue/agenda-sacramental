@@ -1,8 +1,8 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.16";
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.16";
+import { store, DEMO } from "./store.js?v=2026.10.15.17";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.17";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.16";
+const VERSION = "2026.10.15.17";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -2000,11 +2000,13 @@ async function vistaConsejo(id) {
     return `
       ${pendientes.length ? pendientes.map(([t, i]) => `
         <div class="tarea-rev" data-idx="${i}">
-          <button type="button" class="check-tarea" data-completar="${i}" title="Marcar como completada" aria-label="Marcar como completada"><span class="ms">radio_button_unchecked</span></button>
           <div class="fila-body">
             <div class="dos">${txt(`revision.${i}.que`, "Tarea")}${txt(`revision.${i}.quien`, "Responsable")}</div>
             ${detalle(t) ? `<p class="muted small" style="margin:0">${detalle(t)}</p>` : ""}
-            ${txt(`revision.${i}.nota`, "Comentario (opcional)")}
+            <div class="rev-acciones">
+              ${txt(`revision.${i}.nota`, "Comentario (opcional)")}
+              <button type="button" class="btn-completar" data-completar="${i}"><span class="ms">check</span><span class="txt">Marcar como completada</span></button>
+            </div>
           </div>
           <button type="button" class="icon" data-del="revision.${i}" title="Quitar"><span class="ms">close</span></button>
         </div>`).join("")
@@ -2139,8 +2141,8 @@ async function vistaConsejo(id) {
       draft.revision[i].estado = "completada";
       marcar();
       b.classList.add("hecho");
-      b.querySelector(".ms").textContent = "check_circle";
-      await new Promise((r) => setTimeout(r, 180));
+      b.querySelector(".txt").textContent = "Completada";
+      await new Promise((r) => setTimeout(r, 350));
       fila.style.height = `${fila.offsetHeight}px`;
       void fila.offsetHeight;
       fila.classList.add("saliendo");

@@ -383,6 +383,18 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 .check-tarea:hover { color: var(--ok); background: var(--ok-soft); }
 .check-tarea.hecho { color: var(--ok); transform: scale(1.12); }
 .check-tarea.hecho .ms { font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24; }
+.rev-acciones { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.rev-acciones input { flex: 1; min-width: 12rem; }
+.btn-completar {
+  display: inline-flex; align-items: center; gap: .4rem; height: 42px; padding: 0 1rem 0 .8rem; border-radius: 8px; cursor: pointer;
+  border: 1.5px solid var(--ok); background: var(--ok-soft); color: var(--ok); font: 600 .875rem var(--sans); white-space: nowrap;
+  transition: background .15s, color .15s, transform .15s;
+}
+.btn-completar .ms { font-size: 20px; }
+.btn-completar:hover { background: var(--ok); color: #fff; }
+.btn-completar.hecho { background: var(--ok); color: #fff; transform: scale(1.04); }
+.btn-completar.hecho .ms { font-variation-settings: "FILL" 1, "wght" 600, "GRAD" 0, "opsz" 24; }
+@media (max-width: 480px) { .btn-completar { width: 100%; justify-content: center; } }
 .tarea-rev.saliendo {
   height: 0 !important; padding-top: 0; padding-bottom: 0; border-width: 0; opacity: 0; transform: translateX(28px); overflow: hidden;
   transition: height .3s ease .1s, padding .3s ease .1s, border-width .3s ease .1s, opacity .25s ease, transform .25s ease;
