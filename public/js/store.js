@@ -1,6 +1,6 @@
 // Capa de datos: la misma interfaz funciona con Firebase (producción)
 // o con localStorage (modo demostración).
-import { firebaseConfig, APP_CHECK_SITE_KEY } from "./firebase-config.js?v=2026.10.15.18";
+import { firebaseConfig, APP_CHECK_SITE_KEY } from "./firebase-config.js?v=2026.10.15.19";
 
 // En la computadora local (localhost) se puede forzar el modo demostración agregando ?demo a la dirección,
 // para probar cambios sin tocar los datos reales. En el sitio publicado esto no tiene efecto.

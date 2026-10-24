@@ -418,6 +418,37 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 .tipo-fila { display: flex; gap: .35rem; align-items: center; }
 .tipo-fila input { flex: 1; min-width: 0; }
 
+/* Calendario */
+dialog.calendario { width: min(400px, calc(100vw - 24px)); padding: 1.1rem 1.2rem; }
+dialog.calendario:has(.con-hora) { width: min(720px, calc(100vw - 24px)); }
+.cal-cuerpo { display: grid; gap: .8rem; }
+.cal-izq > * + * { margin-top: .35rem; }
+@media (min-width: 680px) { .cal-cuerpo.con-hora { grid-template-columns: 1.15fr 1fr; gap: 1.4rem; align-items: start; } }
+dialog.calendario h2 { font-size: 1.1rem; margin-bottom: 0; }
+dialog.calendario .stack > * + * { margin-top: .6rem; }
+.chips-hora { display: grid !important; grid-template-columns: repeat(4, 1fr); }
+.chips-hora .chip-filtro { padding: .3rem 0; text-align: center; }
+.cal-cab { display: flex; align-items: center; justify-content: space-between; }
+.cal-cab strong { font-size: 1.05rem; }
+.cal-sem, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.cal-sem { margin-top: 0 !important; }
+.cal-sem span { font-size: .72rem; font-weight: 700; color: var(--text-3); padding: .2rem 0; }
+.cal-grid { margin-top: .25rem !important; }
+.dia {
+  height: 36px; border: 0; border-radius: 10px; background: transparent; color: var(--text); cursor: pointer;
+  font: 500 .95rem var(--sans); transition: background .12s;
+}
+.dia:hover { background: var(--surface-2); }
+.dia.domingo { color: var(--accent-text); font-weight: 700; }
+.dia.hoy { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.dia.sel { background: var(--accent); color: var(--on-accent); }
+.cal-hora label { margin-bottom: .4rem; }
+.chips-hora { display: flex; flex-wrap: wrap; gap: .35rem; }
+.chips-hora .chip-filtro { padding: .3rem .6rem; font-size: .8rem; }
+.chips-hora.minutos { margin-top: .5rem; }
+.cal-res { display: flex; align-items: center; gap: .4rem; margin: .25rem 0 0 !important; font-weight: 600; color: var(--accent-text); }
+.cal-res .ms { font-size: 18px; }
+
 /* Control segmentado */
 .radios { display: inline-flex; padding: 3px; gap: 2px; margin-bottom: 1rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; }
 .radios label {

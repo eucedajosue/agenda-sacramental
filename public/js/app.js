@@ -1,8 +1,8 @@
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.18";
-import { DEMO, store } from "./store.js?v=2026.10.15.18";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.19";
+import { DEMO, store } from "./store.js?v=2026.10.15.19";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.18";
+const VERSION = "2026.10.15.19";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -166,11 +166,119 @@ function confirmar({ titulo, mensaje = "", aceptar = "Aceptar", cancelar = "Canc
   });
 }
 
-// Ventana para elegir la fecha de una agenda: próximos domingos u "Otra fecha" con día, mes y año.
+// ── Calendario y hora ──
+const dos2 = (n) => String(n).padStart(2, "0");
+// Horas de 6 a. m. a 9 p. m. (en formato de 24 h)
+const HORAS_CAL = Array.from({ length: 16 }, (_, i) => i + 6);
+const MINUTOS_CAL = [0, 15, 30, 45];
+const formatoHora = (h, m) => `${h % 12 || 12}:${dos2(m)} ${h < 12 ? "a. m." : "p. m."}`;
+// Lee un texto como "7:30 p. m." y devuelve { h, m } en 24 h, o null
+function leerHora(t) {
+  const x = String(t || "").match(/^\s*(\d{1,2})(?::(\d{2}))?\s*([ap])/i);
+  if (!x) return null;
+  let h = Number(x[1]) % 12;
+  if (x[3].toLowerCase() === "p") h += 12;
+  return { h, m: Number(x[2] || 0) };
+}
+const textoFechaHora = (fecha, hora) => `${fechaLarga(fecha)}${hora ? ` · ${hora}` : ""}`;
+
+// Calendario para elegir la fecha (y opcionalmente la hora) tocando el día.
+// Devuelve una promesa con { fecha, hora } o null si se cancela.
+function pedirCalendario({ fecha, hora = "", conHora = false, titulo = "Elegir fecha" } = {}) {
+  return new Promise((resolve) => {
+    let sel = fecha || hoyISO();
+    let [vA, vM] = sel.split("-").map(Number);
+    const h0 = leerHora(hora);
+    let horaH = h0 ? h0.h : null;
+    let minuto = h0 ? h0.m : 0;
+    let resultado = null;
+    document.getElementById("dlgCalendario")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgCalendario";
+    d.className = "calendario";
+    const pintar = () => {
+      const offset = new Date(vA, vM - 1, 1).getDay();
+      const dias = new Date(vA, vM, 0).getDate();
+      const hoy = hoyISO();
+      const celdas = Array.from({ length: offset }, () => "<span></span>");
+      for (let dd = 1; dd <= dias; dd++) {
+        const f = `${vA}-${dos2(vM)}-${dos2(dd)}`;
+        const clases = ["dia", f === sel && "sel", f === hoy && "hoy", (offset + dd - 1) % 7 === 0 && "domingo"].filter(Boolean).join(" ");
+        celdas.push(`<button type="button" class="${clases}" data-dia="${f}">${dd}</button>`);
+      }
+      const mes = MESES[vM - 1];
+      d.innerHTML = `<div class="stack">
+        <h2>${esc(titulo)}</h2>
+        <div class="cal-cuerpo ${conHora ? "con-hora" : ""}"><div class="cal-izq">
+        <div class="cal-cab">
+          <button type="button" class="icon" data-mes="-1" title="Mes anterior"><span class="ms">chevron_left</span></button>
+          <strong>${mes.charAt(0).toUpperCase() + mes.slice(1)} ${vA}</strong>
+          <button type="button" class="icon" data-mes="1" title="Mes siguiente"><span class="ms">chevron_right</span></button>
+        </div>
+        <div class="cal-sem">${["D", "L", "M", "M", "J", "V", "S"].map((x) => `<span>${x}</span>`).join("")}</div>
+        <div class="cal-grid">${celdas.join("")}</div></div>
+        ${conHora ? `
+          <div class="cal-hora">
+            <label>Hora</label>
+            <div class="chips-hora">
+              <button type="button" class="chip-filtro ${horaH === null ? "on" : ""}" data-hora="">Sin hora</button>
+              ${HORAS_CAL.map((h) => `<button type="button" class="chip-filtro ${horaH === h ? "on" : ""}" data-hora="${h}">${h % 12 || 12} ${h < 12 ? "a. m." : "p. m."}</button>`).join("")}
+            </div>
+            ${horaH !== null ? `<div class="chips-hora minutos">${MINUTOS_CAL.map((m) => `<button type="button" class="chip-filtro ${minuto === m ? "on" : ""}" data-min="${m}">:${dos2(m)}</button>`).join("")}</div>` : ""}
+          </div>` : ""}
+        </div>
+        <p class="cal-res"><span class="ms">event</span>${esc(textoFechaHora(sel, conHora && horaH !== null ? formatoHora(horaH, minuto) : ""))}</p>
+        <div class="row end">
+          <button type="button" class="btn text" data-hoy>Hoy</button>
+          <span style="flex:1"></span>
+          <button type="button" class="btn ghost" data-cancelar>Cancelar</button>
+          <button type="button" class="btn" data-listo>Listo</button>
+        </div>
+      </div>`;
+    };
+    d.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.dataset.mes) {
+        vM += Number(b.dataset.mes);
+        if (vM < 1) [vM, vA] = [12, vA - 1];
+        if (vM > 12) [vM, vA] = [1, vA + 1];
+      } else if (b.dataset.dia) {
+        sel = b.dataset.dia;
+        // Sin hora, tocar el día es suficiente
+        if (!conHora) {
+          resultado = { fecha: sel, hora: "" };
+          return d.close();
+        }
+      } else if (b.dataset.hoy !== undefined) {
+        sel = hoyISO();
+        [vA, vM] = sel.split("-").map(Number);
+      } else if (b.dataset.hora !== undefined) {
+        horaH = b.dataset.hora === "" ? null : Number(b.dataset.hora);
+      } else if (b.dataset.min !== undefined) {
+        minuto = Number(b.dataset.min);
+      } else if (b.dataset.cancelar !== undefined) {
+        return d.close();
+      } else if (b.dataset.listo !== undefined) {
+        resultado = { fecha: sel, hora: conHora && horaH !== null ? formatoHora(horaH, minuto) : "" };
+        return d.close();
+      } else return;
+      pintar();
+    });
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(resultado);
+    });
+    pintar();
+    document.body.appendChild(d);
+    d.showModal();
+  });
+}
+
+// Ventana para elegir la fecha de una agenda: próximos domingos u "Otra fecha" en el calendario.
 // Devuelve una promesa con la fecha elegida ("aaaa-mm-dd") o null si se cancela.
 function pedirFecha({ titulo, aceptar, existentes = new Set(), actual = "", permitirExistente = false, nota = "" }) {
   return new Promise((resolve) => {
-    const hoyD = new Date(hoyISO() + "T12:00");
     const base = new Date(proximoDomingo() + "T12:00");
     const domingos = Array.from({ length: 12 }, (_, i) => {
       const d = new Date(base);
@@ -178,8 +286,6 @@ function pedirFecha({ titulo, aceptar, existentes = new Set(), actual = "", perm
       return d.toISOString().slice(0, 10);
     });
     const libre = domingos.find((x) => !existentes.has(x) && x !== actual);
-    const ini = actual ? new Date(actual + "T12:00") : hoyD;
-    const anios = [...new Set([hoyD.getFullYear() - 1, hoyD.getFullYear(), hoyD.getFullYear() + 1, ini.getFullYear()])].sort();
     document.getElementById("dlgFecha")?.remove();
     const d = document.createElement("dialog");
     d.id = "dlgFecha";
@@ -189,37 +295,38 @@ function pedirFecha({ titulo, aceptar, existentes = new Set(), actual = "", perm
       <label>Domingo<select name="domingo">
         ${domingos.map((f) => `<option value="${f}" ${f === libre ? "selected" : ""} ${f === actual ? "disabled" : ""}>${esc(fechaLarga(f))}${
           f === actual ? " · fecha actual" : existentes.has(f) ? " · ya tiene agenda" : ""}</option>`).join("")}
-        <option value="otra">Otra fecha…</option></select></label>
-      <div class="fecha-otra" hidden>
-        <label>Día<select name="dia">${Array.from({ length: 31 }, (_, i) => `<option ${i + 1 === ini.getDate() ? "selected" : ""}>${i + 1}</option>`).join("")}</select></label>
-        <label>Mes<select name="mes">${MESES.map((m, i) => `<option value="${i + 1}" ${i === ini.getMonth() ? "selected" : ""}>${m}</option>`).join("")}</select></label>
-        <label>Año<select name="anio">${anios.map((a) => `<option ${a === ini.getFullYear() ? "selected" : ""}>${a}</option>`).join("")}</select></label>
-      </div>
+        <option value="otra">Otra fecha (calendario)…</option></select></label>
       <p class="error small" hidden></p>
       <div class="row end"><button type="button" class="btn ghost" data-cancelar>Cancelar</button><button class="btn">${esc(aceptar)}</button></div>
     </form>`;
     document.body.appendChild(d);
     const form = d.querySelector("form");
-    const otra = d.querySelector(".fecha-otra");
     const err = d.querySelector(".error");
     const error = (t) => {
       err.textContent = t;
       err.hidden = false;
     };
     let resultado = null;
-    form.domingo.onchange = () => {
-      otra.hidden = form.domingo.value !== "otra";
+    let anterior = form.domingo.value;
+    form.domingo.onchange = async () => {
       err.hidden = true;
+      if (form.domingo.value !== "otra") return (anterior = form.domingo.value);
+      // "Otra fecha": se elige en el calendario y se agrega a la lista ya seleccionada
+      const r = await pedirCalendario({ fecha: actual || (anterior !== "otra" ? anterior : hoyISO()), titulo: "Elegir fecha" });
+      if (!r) return (form.domingo.value = anterior);
+      let op = [...form.domingo.options].find((o) => o.value === r.fecha);
+      if (!op) {
+        op = new Option(`${fechaLarga(r.fecha)}${r.fecha === actual ? " · fecha actual" : existentes.has(r.fecha) ? " · ya tiene agenda" : ""}`, r.fecha);
+        form.domingo.add(op, form.domingo.options[form.domingo.options.length - 1]);
+      }
+      op.disabled = false;
+      form.domingo.value = anterior = r.fecha;
     };
     d.querySelector("[data-cancelar]").onclick = () => d.close();
     form.onsubmit = (e) => {
       e.preventDefault();
-      let fecha = form.domingo.value;
-      if (fecha === "otra") {
-        const [dd, mm, aa] = [form.dia.value, form.mes.value, form.anio.value].map(Number);
-        if (new Date(aa, mm - 1, dd).getDate() !== dd) return error("Esa fecha no existe. Revisa el día y el mes.");
-        fecha = `${aa}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-      }
+      const fecha = form.domingo.value;
+      if (fecha === "otra") return error("Elige una fecha en el calendario.");
       if (fecha === actual) return error("Elige una fecha distinta a la actual.");
       if (!permitirExistente && existentes.has(fecha)) return error(`Ya hay una agenda para el ${fechaLarga(fecha)}.`);
       resultado = fecha;
@@ -1746,22 +1853,6 @@ function pedirPersona(participantes, { actual = null } = {}) {
   });
 }
 
-// Selects de día, mes y año (para fechas que no son necesariamente domingo)
-function selectsFecha(fecha, prefijo) {
-  const [a, m, d] = (fecha || hoyISO()).split("-").map(Number);
-  const hoyA = new Date().getFullYear();
-  const anios = [...new Set([hoyA - 1, hoyA, hoyA + 1, a])].sort();
-  return `<div class="fecha-otra">
-    <label>Día<select data-${prefijo}="d">${Array.from({ length: 31 }, (_, i) => `<option ${i + 1 === d ? "selected" : ""}>${i + 1}</option>`).join("")}</select></label>
-    <label>Mes<select data-${prefijo}="m">${MESES.map((n, i) => `<option value="${i + 1}" ${i + 1 === m ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-    <label>Año<select data-${prefijo}="a">${anios.map((x) => `<option ${x === a ? "selected" : ""}>${x}</option>`).join("")}</select></label>
-  </div>`;
-}
-function leerFecha(cont, prefijo) {
-  const [d, m, a] = ["d", "m", "a"].map((k) => Number(cont.querySelector(`[data-${prefijo}="${k}"]`).value));
-  if (new Date(a, m - 1, d).getDate() !== d) return null;
-  return `${a}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
 
 // Tareas pendientes de la reunión anterior del mismo tipo, para revisarlas en la nueva
 function tareasParaRevisar(juntas, tipoId, fecha) {
@@ -1855,28 +1946,31 @@ function pedirNuevaReunion(tipos) {
     d.innerHTML = `<form class="stack">
       <h2>Nueva reunión</h2>
       <label>Tipo de reunión<select name="tipo">${tipos.map((t) => `<option value="${t.id}" ${t.id === S.filtroTipo ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}</select></label>
-      ${selectsFecha(hoyISO(), "nf")}
-      <label>Hora (opcional)<input name="hora" maxlength="20" placeholder="Ej. 7:00 p. m."></label>
-      <p class="error small" hidden></p>
+      <div><label>Fecha y hora</label>
+        <button type="button" class="picker" data-cal><span></span><span class="ms">calendar_month</span></button></div>
       <div class="row end"><button type="button" class="btn ghost" data-cancelar>Cancelar</button><button class="btn">Crear</button></div>
     </form>`;
     document.body.appendChild(d);
     const form = d.querySelector("form");
+    const botonCal = d.querySelector("[data-cal]");
+    let fecha = hoyISO();
+    let horaTxt = "";
     let resultado = null;
+    const mostrar = () => (botonCal.firstElementChild.textContent = textoFechaHora(fecha, horaTxt));
+    botonCal.onclick = async () => {
+      const r = await pedirCalendario({ fecha, hora: horaTxt, conHora: true, titulo: "Fecha y hora de la reunión" });
+      if (!r) return;
+      ({ fecha, hora: horaTxt } = r);
+      mostrar();
+    };
     d.querySelector("[data-cancelar]").onclick = () => d.close();
     form.onsubmit = (e) => {
       e.preventDefault();
-      const fecha = leerFecha(form, "nf");
-      if (!fecha) {
-        const err = form.querySelector(".error");
-        err.textContent = "Esa fecha no existe. Revisa el día y el mes.";
-        err.hidden = false;
-        return;
-      }
       const tipo = tipos.find((t) => t.id === form.tipo.value);
-      resultado = { tipoId: tipo.id, tipoNombre: tipo.nombre, fecha, hora: form.hora.value.trim() };
+      resultado = { tipoId: tipo.id, tipoNombre: tipo.nombre, fecha, hora: horaTxt };
       d.close();
     };
+    mostrar();
     d.addEventListener("close", () => {
       d.remove();
       resolve(resultado);
@@ -2042,8 +2136,8 @@ async function vistaConsejo(id) {
       <h1>${esc(nombreTipo(tipos, draft))}</h1><p class="muted" style="margin:0">${esc(fechaLarga(draft.fecha))}${esc(hora(draft))}</p></div></div>
     ${seccion(++n, "Datos de la reunión", `
       <div class="field"><label>Tipo de reunión<select data-tipo-reunion>${tipos.map((t) => `<option value="${t.id}" ${t.id === draft.tipoId ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}</select></label></div>
-      <label>Fecha</label>${selectsFecha(draft.fecha, "fc")}
-      <div class="field" style="margin-top:.75rem"><label>Hora<input data-f="hora" maxlength="20" value="${esc(draft.hora)}" placeholder="Ej. 7:00 p. m."></label></div>
+      <div class="field"><label>Fecha y hora</label>
+        <button type="button" class="picker" id="calConsejo"><span>${esc(textoFechaHora(draft.fecha, draft.hora))}</span><span class="ms">calendar_month</span></button></div>
       <div class="dos"><div class="field"><label>Preside</label>${picker("preside")}</div><div class="field"><label>Dirige</label>${picker("dirige")}</div></div>`)}
     ${seccion(++n, "Participantes", `
       <div class="chips-testimonios" id="chipsPart">${chips()}</div>
@@ -2096,12 +2190,6 @@ async function vistaConsejo(id) {
       draft.tipoNombre = tipo.nombre;
       marcar();
       main.querySelector("h1").textContent = tipo.nombre;
-    } else if (t.dataset.fc) {
-      const f = leerFecha(main, "fc");
-      if (!f) return toast("Esa fecha no existe. Revisa el día y el mes.", true);
-      draft.fecha = f;
-      marcar();
-      main.querySelector(".bar p").textContent = fechaLarga(f) + hora(draft);
     }
   };
   // Recordar si el grupo de tareas completadas está abierto (el evento "toggle" no burbujea)
@@ -2128,6 +2216,16 @@ async function vistaConsejo(id) {
       setPath(draft, b.dataset.elegir, p);
       marcar();
       return render();
+    }
+    if (b.id === "calConsejo") {
+      const r = await pedirCalendario({ fecha: draft.fecha, hora: draft.hora, conHora: true, titulo: "Fecha y hora de la reunión" });
+      if (!r) return;
+      draft.fecha = r.fecha;
+      draft.hora = r.hora;
+      marcar();
+      b.firstElementChild.textContent = textoFechaHora(draft.fecha, draft.hora);
+      main.querySelector(".bar p").textContent = textoFechaHora(draft.fecha, draft.hora);
+      return;
     }
     if (b.dataset.quitarPart !== undefined) {
       draft.participantes.splice(+b.dataset.quitarPart, 1);
