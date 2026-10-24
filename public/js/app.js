@@ -1,5 +1,5 @@
-import { store, DEMO } from "./store.js?v=2026.10.15.18";
 import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.18";
+import { DEMO, store } from "./store.js?v=2026.10.15.18";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
 const VERSION = "2026.10.15.18";
@@ -482,8 +482,8 @@ function route() {
 
 function shell(activa) {
   const tabs = [
-    ["agenda", "Agenda", "event_note", S.perms.verAgenda],
-    ["reuniones", "Reuniones", "forum", S.perms.verConsejos || S.perms.editarConsejos],
+    ["agenda", "Sacramental", "event_note", S.perms.verAgenda],
+    ["reuniones", "Otras Reuniones", "forum", S.perms.verConsejos || S.perms.editarConsejos],
     ["participantes", "Participantes", "groups", S.perms.verParticipantes || S.perms.editarParticipantes],
     ["usuarios", "Usuarios", "manage_accounts", S.perms.gestionarUsuarios],
     ["roles", "Roles", "admin_panel_settings", S.esAdmin],
