@@ -2,7 +2,11 @@
 // o con localStorage (modo demostración).
 import { firebaseConfig, APP_CHECK_SITE_KEY } from "./firebase-config.js?v=2026.10.15.18";
 
-export const DEMO = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("TU_");
+// En la computadora local (localhost) se puede forzar el modo demostración agregando ?demo a la dirección,
+// para probar cambios sin tocar los datos reales. En el sitio publicado esto no tiene efecto.
+const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
+export const DEMO = (LOCAL && new URLSearchParams(location.search).has("demo"))
+  || !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("TU_");
 
 const FB = "https://www.gstatic.com/firebasejs/10.12.2";
 
