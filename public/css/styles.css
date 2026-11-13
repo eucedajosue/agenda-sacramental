@@ -304,6 +304,12 @@ main { max-width: 860px; margin: 0 auto; padding: 1rem 16px calc(9rem + env(safe
 
 /* ───────────── Editor ───────────── */
 section.card { padding: 1.35rem 1.25rem; }
+/* Celular: tarjetas más compactas para que el formulario de la agenda no se haga tan largo */
+@media (max-width: 600px) {
+  section.card { padding: 1rem .95rem; margin-bottom: .6rem; }
+  section.card > h2 { font-size: 1rem; margin-bottom: .7rem; gap: .5rem; }
+  section.card > h2 .paso { width: 22px; height: 22px; font-size: .7rem; }
+}
 .paso {
   width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; flex: none;
   font: 700 .78rem var(--sans); color: var(--on-accent); background: var(--accent);

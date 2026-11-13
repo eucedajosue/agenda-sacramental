@@ -1,8 +1,8 @@
-import { SUPERADMINS } from "./firebase-config.js?v=2026.10.15.19";
-import { DEMO, store } from "./store.js?v=2026.10.15.19";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.11.13.1";
+import { DEMO, store } from "./store.js?v=2026.11.13.1";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.10.15.19";
+const VERSION = "2026.11.13.1";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -40,6 +40,31 @@ const COLUMNAS_TESTIMONIOS = 4;
 const FILAS_TESTIMONIOS = 8;
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const TIPOS_ASUNTO = ["Sostenimiento", "Relevo", "Ordenación al sacerdocio", "Otro"];
+// Solo estos llamamientos pueden presidir una reunión
+const LLAMAMIENTOS_PRESIDENCIA = ["Obispo", "Consejero del obispado", "Presidente de estaca", "Consejero de la presidencia de estaca"];
+const puedePresidir = (p) => LLAMAMIENTOS_PRESIDENCIA.includes(p?.llamamiento);
+// Historial que se carga a mano en cada participante (lo que hizo antes de usar la app)
+const PREVIO_CAMPOS = { discurso: "Último discurso", oracion: "Última oración", preside: "Última vez que presidió", dirige: "Última vez que dirigió" };
+// Fecha escrita a mano o en Excel (yyyy-mm-dd o dd/mm/aaaa) -> yyyy-mm-dd, o "" si no es válida
+function fechaDeTexto(s) {
+  const t = String(s ?? "").trim();
+  let y, mo, d, m;
+  if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) [, y, mo, d] = m;
+  else if ((m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/))) {
+    [, d, mo, y] = m;
+    if (y.length === 2) y = "20" + y;
+  } else return "";
+  if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return "";
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+// Suma esas fechas manuales a los mapas de última participación (id persona -> fecha), quedándose con la más reciente
+function sumarPrevios(mapas, participantes) {
+  participantes.forEach((p) => {
+    Object.entries(p.historialPrevio || {}).forEach(([tipo, f]) => {
+      if (mapas[tipo] && f && !((mapas[tipo][p.id] || "") >= f)) mapas[tipo][p.id] = f;
+    });
+  });
+}
 
 const PLANTILLAS = {
   visitantes: { nombre: "", llamamiento: "" },
@@ -689,6 +714,26 @@ function historial(reuniones, excluirFecha) {
 }
 const cuando = (f) => (!f ? "nunca" : f > hoyISO() ? `asignado ${fechaCorta(f)}` : fechaCorta(f));
 
+
+
+// Última fecha en que cada persona presidió (preside) o dirigió (dirige), sumando agendas y reuniones de consejo.
+// Devuelve { preside: { idPersona: fecha }, dirige: { ... } }. Se excluye la reunión con id "excluir".
+function ultimaPresidencia(reuniones, consejos, excluir) {
+  const h = { preside: {}, dirige: {} };
+  const anotar = (tipo, p, f) => {
+    if (p?.id && f && !(h[tipo][p.id] >= f)) h[tipo][p.id] = f;
+  };
+  reuniones.filter((r) => r.id !== excluir).forEach((r) => {
+    anotar("preside", r.preside, r.id);
+    anotar("dirige", r.dirige, r.id);
+  });
+  consejos.filter((c) => c.id !== excluir).forEach((c) => {
+    anotar("preside", c.preside, c.fecha);
+    anotar("dirige", c.dirige, c.fecha);
+  });
+  return h;
+}
+
 async function vistaAgendas() {
   const main = shell("agenda");
   const reuniones = await store.list(`${B()}/reuniones`);
@@ -813,12 +858,14 @@ async function vistaAgendas() {
 async function vistaEditor(fecha) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || "")) return (location.hash = "#/agenda");
   const main = shell("agenda");
-  const [existente, participantes, reuniones, catalogo] = await Promise.all([
+  const [existente, participantes, reuniones, catalogo, consejos] = await Promise.all([
     store.get(`${B()}/reuniones/${fecha}`),
     cargarParticipantes(true),
     store.list(`${B()}/reuniones`).catch(() => []),
     cargarHimnos(),
+    store.list(`${B()}/consejos`).catch(() => []),
   ]);
+  const presidencias = ultimaPresidencia(reuniones, consejos, fecha);
   const draft = existente ? { ...nuevaReunion(fecha), ...existente } : nuevaReunion(fecha);
   delete draft.id;
   const porId = Object.fromEntries(participantes.map((p) => [p.id, p]));
@@ -826,8 +873,10 @@ async function vistaEditor(fecha) {
   // ── Selector de participantes: búsqueda por nombre y opción de registrar uno nuevo.
   // Para discursos y oraciones: primero quienes nunca han participado, luego quienes llevan más tiempo sin hacerlo.
   const ultimo = historial(reuniones, fecha);
-  const ordenar = (tipo) => [...participantes].sort(tipo
-    ? (a, b) => (ultimo[tipo][a.id] || "").localeCompare(ultimo[tipo][b.id] || "") || a.nombre.localeCompare(b.nombre, "es")
+  sumarPrevios(ultimo, participantes);
+  sumarPrevios(presidencias, participantes);
+  const ordenar = (mapa) => [...participantes].sort(mapa
+    ? (a, b) => (mapa[a.id] || "").localeCompare(mapa[b.id] || "") || a.nombre.localeCompare(b.nombre, "es")
     : (a, b) => (a.organizacion || "").localeCompare(b.organizacion || "", "es") || a.nombre.localeCompare(b.nombre, "es"));
 
   const selPersona = (path, tipo = "") => {
@@ -849,6 +898,10 @@ async function vistaEditor(fecha) {
 
   const abrirSelector = (path, tipo) => {
     const actual = getPath(draft, path)?.id;
+    // Solo el obispado y la presidencia de estaca pueden presidir o dirigir
+    const soloPresidentes = ["preside", "dirige"].includes(path);
+    // Orden y fecha mostrada: última presidencia/dirección para esos campos, o último tipo de participación
+    const mapa = soloPresidentes ? presidencias[path] : tipo ? ultimo[tipo] : null;
     const elegir = (p) => {
       setPath(draft, path, p ? { id: p.id, nombre: p.nombre, organizacion: p.organizacion || "" } : null);
       dlg.close();
@@ -865,19 +918,19 @@ async function vistaEditor(fecha) {
         <div class="sel-lista" id="selLista"></div>
         <div class="sel-pie">
           ${actual ? `<button type="button" class="btn text sm" id="selQuitar">Quitar selección</button>` : "<span></span>"}
-          ${puedeCrear ? `<button type="button" class="btn ghost sm" id="selNuevo"><span class="ms">person_add</span>Nuevo participante</button>` : ""}
+          ${puedeCrear && !soloPresidentes ? `<button type="button" class="btn ghost sm" id="selNuevo"><span class="ms">person_add</span>Nuevo participante</button>` : ""}
         </div>`;
       const $buscar = dlg.querySelector("#selBuscar");
       const $lista = dlg.querySelector("#selLista");
       let visibles = [];
       const pintar = () => {
         const t = norm($buscar.value);
-        const todos = ordenar(tipo).filter((p) => p.activo !== false && (!t || norm(p.nombre).includes(t) || norm(p.organizacion).includes(t)));
+        const todos = ordenar(mapa).filter((p) => p.activo !== false && (!soloPresidentes || puedePresidir(p)) && (!t || norm(p.nombre).includes(t) || norm(p.organizacion).includes(t)));
         visibles = todos.slice(0, 80);
         $lista.innerHTML = visibles.map((p, i) => `
           <button type="button" class="sel-op ${p.id === actual ? "actual" : ""}" data-i="${i}">
             <span><b>${esc(p.nombre)}</b><small>${esc(p.organizacion || "Sin organización")}</small></span>
-            ${tipo ? `<span class="cuando">${esc(cuando(ultimo[tipo][p.id]))}</span>` : ""}
+            ${mapa ? `<span class="cuando">${esc(cuando(mapa[p.id]))}</span>` : ""}
           </button>`).join("")
           + (todos.length > visibles.length ? `<p class="muted small center">Y ${todos.length - visibles.length} más. Escribe para afinar la búsqueda.</p>` : "")
           + (todos.length ? "" : `<p class="muted center">${participantes.length ? "Nadie coincide con la búsqueda." : "Aún no hay participantes registrados."}</p>`);
@@ -1314,6 +1367,7 @@ async function vistaParticipantes() {
   ]);
   const tel = Object.fromEntries(contactos.map((c) => [c.id, c.telefono]));
   const hist = historial(reuniones);
+  sumarPrevios(hist, lista);
   // Agendas en las que aparece cada persona (en cualquier parte): quien tenga historial no se puede eliminar
   const agendasDe = {};
   reuniones.forEach((r) => {
@@ -1345,6 +1399,7 @@ async function vistaParticipantes() {
       ${puedeEditar ? `<div class="row">
         <button class="btn" id="agregar"><span class="ms">person_add</span>Agregar</button>
         <label class="btn ghost"><span class="ms">upload_file</span>Importar Excel o CSV<input type="file" id="archivo" accept=".xlsx,.xls,.csv,.txt" hidden></label>
+        <button class="btn ghost" id="formato"><span class="ms">download</span>Descargar formato Excel</button>
       </div>` : ""}</div>
     <div class="row filtros">
       <input type="search" id="q" placeholder="Buscar por nombre">
@@ -1372,7 +1427,7 @@ async function vistaParticipantes() {
     $lista.innerHTML = vis.map((p) => `
       <div class="card persona ${p.activo === false ? "inactivo" : ""}" data-id="${p.id}">
         <div><strong>${esc(p.nombre)}</strong>${p.activo === false ? ` <span class="pill">Inactivo</span>` : ""}
-          <p class="muted small">${esc(p.organizacion || "Sin organización")}
+          <p class="muted small">${esc(p.organizacion || "Sin organización")}${p.llamamiento ? ` · <strong>${esc(p.llamamiento)}</strong>` : ""}
           ${verTel && tel[p.id] ? ` · <a href="tel:${esc(tel[p.id])}">${esc(tel[p.id])}</a>` : ""}</p>
           ${S.perms.verAgenda ? historialDe(p.id) : ""}
         </div>
@@ -1452,6 +1507,13 @@ async function vistaParticipantes() {
       <h2>${nuevo ? "Agregar" : "Editar"} participante</h2>
       <label>Nombre<input name="nombre" required value="${esc(p.nombre)}"></label>
       <label>Organización<input name="organizacion" list="orgs" value="${esc(p.organizacion)}"></label>
+      <label>Llamamiento (solo para presidir reuniones)<select name="llamamiento">
+        <option value="">Ninguno</option>
+        ${LLAMAMIENTOS_PRESIDENCIA.map((l) => `<option ${l === p.llamamiento ? "selected" : ""}>${esc(l)}</option>`).join("")}
+      </select></label>
+      <div class="field"><span class="muted small">Última vez antes de usar la app (opcional; déjalo vacío si ya está registrado aquí)</span>
+        <div class="dos">${Object.entries(PREVIO_CAMPOS).map(([tipo, etiqueta]) => `<label>${etiqueta}<input type="date" name="previo_${tipo}" value="${esc(p.historialPrevio?.[tipo] || "")}"></label>`).join("")}</div>
+      </div>
       ${mostrarTel ? `<label>Teléfono<input name="telefono" type="tel" value="${esc(tel[p.id])}"></label>` : ""}
       <div class="row end"><button type="button" class="btn ghost" id="cancelar">Cancelar</button><button class="btn">Guardar</button></div>
     </form>`;
@@ -1462,8 +1524,16 @@ async function vistaParticipantes() {
       const f = new FormData(e.target);
       intentar(async () => {
         const id = p.id || store.newId(`${B()}/participantes`);
+        const llamamiento = f.get("llamamiento");
+        const previo = {};
+        for (const tipo of Object.keys(PREVIO_CAMPOS)) {
+          const v = f.get(`previo_${tipo}`);
+          if (v) previo[tipo] = v;
+        }
         await store.set(`${B()}/participantes/${id}`, {
           nombre: f.get("nombre").trim(), organizacion: f.get("organizacion").trim(), activo: p.activo !== false,
+          ...(llamamiento ? { llamamiento } : {}),
+          ...(Object.keys(previo).length ? { historialPrevio: previo } : {}),
         });
         if (mostrarTel) await store.set(`${B()}/contactos/${id}`, { telefono: f.get("telefono").trim() });
         dlg.close();
@@ -1478,10 +1548,14 @@ async function vistaParticipantes() {
     if (!filas.length) return toast("El archivo está vacío.", true);
     const cab = filas[0].map(norm);
     const col = (...nombres) => cab.findIndex((c) => nombres.some((n) => c.startsWith(n)));
-    let idx = { nombre: col("nombre", "name"), organizacion: col("organizacion", "org"), telefono: col("telefono", "tel", "celular", "phone", "movil") };
+    let idx = {
+      nombre: col("nombre", "name"), organizacion: col("organizacion", "org"), telefono: col("telefono", "tel", "celular", "phone", "movil"),
+      llamamiento: col("llamamiento"),
+      ...Object.fromEntries(Object.entries(PREVIO_CAMPOS).map(([tipo, etiqueta]) => [tipo, col(norm(etiqueta))])),
+    };
     let datos = filas.slice(1);
     if (idx.nombre < 0) {
-      idx = { nombre: 0, organizacion: 1, telefono: 2 };
+      idx = { nombre: 0, organizacion: 1, telefono: 2, llamamiento: -1 };
       datos = filas;
     }
     const porNombre = Object.fromEntries(lista.map((p) => [norm(p.nombre), p.id]));
@@ -1489,6 +1563,10 @@ async function vistaParticipantes() {
     const items = datos.map((r) => ({
       nombre: val(r, idx.nombre), organizacion: val(r, idx.organizacion),
       telefono: val(r, idx.telefono),
+      // Una celda vacía o no válida no cambia el dato que ya está en el sistema (null = no tocar).
+      // Para quitar un llamamiento o una fecha se hace desde la ficha del participante.
+      llamamiento: LLAMAMIENTOS_PRESIDENCIA.find((l) => norm(l) === norm(val(r, idx.llamamiento))) || null,
+      historial: Object.fromEntries(Object.keys(PREVIO_CAMPOS).map((tipo) => [tipo, fechaDeTexto(val(r, idx[tipo])) || null])),
     })).filter((x) => x.nombre);
     const existentes = items.filter((x) => porNombre[norm(x.nombre)]).length;
 
@@ -1511,7 +1589,16 @@ async function vistaParticipantes() {
           const id = porNombre[norm(x.nombre)] || store.newId(`${B()}/participantes`);
           porNombre[norm(x.nombre)] = id;
           const previo = lista.find((p) => p.id === id);
-          escrituras.push({ path: `${B()}/participantes/${id}`, data: { nombre: x.nombre, organizacion: x.organizacion, activo: previo ? previo.activo !== false : true } });
+          const llamamiento = x.llamamiento || previo?.llamamiento;
+          const historial = { ...(previo?.historialPrevio || {}) };
+          Object.entries(x.historial).forEach(([tipo, f]) => {
+            if (f) historial[tipo] = f;
+          });
+          escrituras.push({ path: `${B()}/participantes/${id}`, data: {
+            nombre: x.nombre, organizacion: x.organizacion, activo: previo ? previo.activo !== false : true,
+            ...(llamamiento ? { llamamiento } : {}),
+            ...(Object.keys(historial).length ? { historialPrevio: historial } : {}),
+          } });
           if (x.telefono) escrituras.push({ path: `${B()}/contactos/${id}`, data: { telefono: x.telefono } });
         });
         await store.batchSet(escrituras);
@@ -1531,6 +1618,25 @@ async function vistaParticipantes() {
       if (e.target.files[0]) intentar(() => importar(e.target.files[0]));
       e.target.value = "";
     };
+    // Excel con todos los participantes, en el mismo formato que acepta la importación
+    document.getElementById("formato").onclick = () => intentar(async () => {
+      const XLSX = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      const cab = ["Nombre", "Organización", "Teléfono", "Llamamiento", ...Object.values(PREVIO_CAMPOS)];
+      const filas = [...lista].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")).map((p) => [
+        p.nombre, p.organizacion || "", verTel ? (tel[p.id] || "") : "", p.llamamiento || "",
+        ...Object.keys(PREVIO_CAMPOS).map((t) => (p.historialPrevio?.[t] ? new Date(p.historialPrevio[t] + "T12:00") : "")),
+      ]);
+      const hoja = XLSX.utils.aoa_to_sheet([cab, ...filas], { cellDates: true });
+      hoja["!cols"] = [{ wch: 28 }, { wch: 22 }, { wch: 16 }, { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 22 }, { wch: 22 }];
+      // Columnas de fecha en formato dd/mm/aaaa
+      filas.forEach((_, i) => [4, 5, 6, 7].forEach((c) => {
+        const celda = hoja[XLSX.utils.encode_cell({ r: i + 1, c })];
+        if (celda) celda.z = "dd/mm/yyyy";
+      }));
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja, "Participantes");
+      XLSX.writeFile(libro, "participantes.xlsx", { cellDates: true });
+    });
     $lista.onclick = (e) => {
       const b = e.target.closest("button");
       if (!b) return;
@@ -1558,7 +1664,7 @@ async function vistaParticipantes() {
           }))) return;
           // Se guarda el registro completo (no solo "activo") para descartar campos antiguos, como la edad,
           // que las reglas de seguridad ya no aceptan
-          await store.set(`${B()}/participantes/${p.id}`, { nombre: p.nombre, organizacion: p.organizacion || "", activo });
+          await store.set(`${B()}/participantes/${p.id}`, { nombre: p.nombre, organizacion: p.organizacion || "", activo, ...(p.llamamiento ? { llamamiento: p.llamamiento } : {}), ...(p.historialPrevio ? { historialPrevio: p.historialPrevio } : {}) });
           // Se actualiza solo la lista, sin recargar la página ni perder filtros o posición
           p.activo = activo;
           S.participantes = null;
@@ -1788,7 +1894,7 @@ const nombreTipo = (tipos, r) => tipos.find((t) => t.id === r.tipoId)?.nombre ||
 
 // Selector de persona reutilizable: busca entre los participantes activos o usa un nombre escrito.
 // Devuelve la persona, null para quitar la selección, o undefined si se cancela.
-function pedirPersona(participantes, { actual = null } = {}) {
+function pedirPersona(participantes, { actual = null, soloPresidentes = false, fechas = null } = {}) {
   return new Promise((resolve) => {
     document.getElementById("dlgElegir")?.remove();
     const d = document.createElement("dialog");
@@ -1808,7 +1914,9 @@ function pedirPersona(participantes, { actual = null } = {}) {
     const $q = d.querySelector("input");
     const $l = d.querySelector(".sel-lista");
     const $libre = d.querySelector("[data-libre]");
-    const activos = participantes.filter((p) => p.activo !== false).sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+    // Con fechas (presidencia), el más antiguo primero; quienes nunca han presidido quedan arriba
+    const activos = participantes.filter((p) => p.activo !== false && (!soloPresidentes || puedePresidir(p)))
+      .sort((a, b) => (fechas ? (fechas[a.id] || "").localeCompare(fechas[b.id] || "") : 0) || a.nombre.localeCompare(b.nombre, "es"));
     let vis = [];
     let resultado;
     const pintar = () => {
@@ -1818,11 +1926,13 @@ function pedirPersona(participantes, { actual = null } = {}) {
       $l.innerHTML = vis.map((p, i) => `
         <button type="button" class="sel-op ${p.id === actual?.id ? "actual" : ""}" data-i="${i}">
           <span><b>${esc(p.nombre)}</b><small>${esc(p.organizacion || "Sin organización")}</small></span>
+          ${fechas ? `<span class="cuando">${esc(cuando(fechas[p.id]))}</span>` : ""}
         </button>`).join("")
         + (todos.length > vis.length ? `<p class="muted small center">Y ${todos.length - vis.length} más. Escribe para afinar la búsqueda.</p>` : "")
         + (todos.length ? "" : `<p class="muted center">Nadie coincide con la búsqueda.</p>`);
       const q = $q.value.trim();
-      $libre.hidden = !q;
+      // Para presidir solo se pueden elegir participantes registrados con un llamamiento válido
+      $libre.hidden = !q || soloPresidentes;
       $libre.querySelector("span:last-child").textContent = `Usar "${q}"`;
     };
     const elegir = (p) => {
@@ -2058,12 +2168,15 @@ function gestionarTipos(tipos, juntas) {
 
 async function vistaConsejo(id) {
   const main = shell("reuniones");
-  const [doc, tipos, participantes, juntas] = await Promise.all([
+  const [doc, tipos, participantes, juntas, reuniones] = await Promise.all([
     store.get(`${B()}/consejos/${id || "-"}`),
     cargarTiposReunion(),
     cargarParticipantes(true).catch(() => []),
     store.list(`${B()}/consejos`),
+    store.list(`${B()}/reuniones`).catch(() => []),
   ]);
+  const presidencias = ultimaPresidencia(reuniones, juntas, id);
+  sumarPrevios(presidencias, participantes);
   if (!doc) {
     main.innerHTML = `<p>No se encontró la reunión. <a href="#/reuniones">Volver</a></p>`;
     return;
@@ -2211,7 +2324,8 @@ async function vistaConsejo(id) {
     const b = e.target.closest("button");
     if (!b) return;
     if (b.dataset.elegir) {
-      const p = await pedirPersona(participantes, { actual: getPath(draft, b.dataset.elegir) });
+      const esPresidencia = ["preside", "dirige"].includes(b.dataset.elegir);
+      const p = await pedirPersona(participantes, { actual: getPath(draft, b.dataset.elegir), soloPresidentes: esPresidencia, fechas: esPresidencia ? presidencias[b.dataset.elegir] : null });
       if (p === undefined) return;
       setPath(draft, b.dataset.elegir, p);
       marcar();

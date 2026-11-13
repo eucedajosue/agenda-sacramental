@@ -124,10 +124,12 @@ service cloud.firestore {
       match /participantes/{id} {
         allow read: if permiso(b, 'verParticipantes') || permiso(b, 'editarParticipantes') || permiso(b, 'editarAgenda');
         allow create, update: if permiso(b, 'editarParticipantes')
-          && datos().keys().hasOnly(['nombre', 'organizacion', 'activo'])
+          && datos().keys().hasOnly(['nombre', 'organizacion', 'activo', 'llamamiento', 'historialPrevio'])
           && (!('activo' in datos()) || datos().activo is bool)
           && texto(datos().nombre, 100) && datos().nombre.size() > 0
-          && textoOpcional(datos(), 'organizacion', 60);
+          && textoOpcional(datos(), 'organizacion', 60)
+          && textoOpcional(datos(), 'llamamiento', 60)
+          && (!('historialPrevio' in datos()) || datos().historialPrevio is map);
         // Eliminar participantes: solo administradores del barrio
         allow delete: if aprobado(b) && isAdmin(b);
       }
