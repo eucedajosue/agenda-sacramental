@@ -354,6 +354,19 @@ dialog.selector { padding: 0; width: min(520px, calc(100vw - 24px)); overflow: h
 }
 .sel-txt { min-width: 0; }
 
+/* Copiar anuncios: filas grandes para tocar en celular, con la casilla a la derecha */
+.sel-cab { flex: 1; min-width: 0; }
+.sel-titulo { margin: 0; font-size: 1.1rem; }
+.sel-cab .small { margin: .1rem 0 0; }
+.anuncio-op { align-items: center; cursor: pointer; min-height: 52px; padding: .6rem .8rem; border-bottom: 1px solid var(--line); border-radius: 0; }
+.anuncio-op:last-child { border-bottom: 0; }
+.anuncio-op input { width: 22px; height: 22px; flex: none; margin: 0; cursor: pointer; }
+.anuncio-op.repetido { opacity: .55; cursor: default; }
+.anuncio-txt { flex: 1; min-width: 0; line-height: 1.4; font-size: .95rem; }
+.anuncio-txt small { display: block; color: var(--text-3); font-size: .78rem; margin-top: .15rem; }
+#dlgAnuncios .sel-pie { position: sticky; bottom: 0; background: var(--surface); }
+#dlgAnuncios .sel-pie .btn:not(.text) { min-width: 8rem; }
+
 /* Testimonios: registro rápido */
 .chips-testimonios { display: flex; flex-wrap: wrap; gap: .4rem; margin: .25rem 0 .75rem; }
 .chips-testimonios > p { margin: 0; }

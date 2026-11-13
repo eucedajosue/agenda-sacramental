@@ -1,8 +1,8 @@
-import { SUPERADMINS } from "./firebase-config.js?v=2026.11.13.1";
-import { DEMO, store } from "./store.js?v=2026.11.13.1";
+import { SUPERADMINS } from "./firebase-config.js?v=2026.11.13.2";
+import { DEMO, store } from "./store.js?v=2026.11.13.2";
 
 // Versión de la app: cámbiala junto con los ?v= de index.html, app.js y store.js al publicar cambios grandes
-const VERSION = "2026.11.13.1";
+const VERSION = "2026.11.13.2";
 
 // ───────────────────────── Constantes ─────────────────────────
 
@@ -99,6 +99,70 @@ function fechaLarga(f) {
 }
 function fechaCorta(f) {
   return new Date(f + "T12:00").toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" });
+}
+// Diálogo con casillas para elegir qué anuncios copiar. Resuelve con los textos elegidos o null si se cancela.
+function elegirAnuncios(candidatos, yaExisten) {
+  return new Promise((resolve) => {
+    document.getElementById("dlgAnuncios")?.remove();
+    const d = document.createElement("dialog");
+    d.id = "dlgAnuncios";
+    d.className = "selector";
+    d.innerHTML = `
+      <div class="sel-head">
+        <div class="sel-cab"><h2 class="sel-titulo">Copiar anuncios</h2><p class="muted small" id="anunciosCuenta"></p></div>
+        <button type="button" class="icon" data-cerrar title="Cerrar"><span class="ms">close</span></button>
+      </div>
+      <div class="sel-lista">
+        ${candidatos.map((a, i) => {
+          const repetido = yaExisten.has(norm(a.texto));
+          return `<label class="sel-op anuncio-op ${repetido ? "repetido" : ""}">
+            <span class="anuncio-txt">${esc(a.texto)}${repetido ? `<small>Ya está en esta agenda</small>` : ""}</span>
+            <input type="checkbox" value="${i}" ${repetido ? "disabled" : "checked"}>
+          </label>`;
+        }).join("")}
+      </div>
+      <div class="sel-pie">
+        <button type="button" class="btn text sm" id="todosAnuncios">Marcar todos</button>
+        <button type="button" class="btn" id="confirmarAnuncios">Copiar</button>
+      </div>`;
+    document.body.appendChild(d);
+    let resultado = null;
+    const $cuenta = d.querySelector("#anunciosCuenta");
+    const $copiar = d.querySelector("#confirmarAnuncios");
+    const casillas = () => [...d.querySelectorAll("input[type=checkbox]:not(:disabled)")];
+    const actualizar = () => {
+      const n = casillas().filter((c) => c.checked).length;
+      $cuenta.textContent = `${n} de ${casillas().length} seleccionados`;
+      $copiar.textContent = n ? `Copiar ${n}` : "Copiar";
+      $copiar.disabled = !n;
+      d.querySelector("#todosAnuncios").textContent = n === casillas().length ? "Desmarcar todos" : "Marcar todos";
+    };
+    d.querySelector("[data-cerrar]").onclick = () => d.close();
+    d.querySelector("#todosAnuncios").onclick = () => {
+      const todos = casillas().every((c) => c.checked);
+      casillas().forEach((c) => (c.checked = !todos));
+      actualizar();
+    };
+    d.querySelector(".sel-lista").onchange = actualizar;
+    $copiar.onclick = (e) => {
+      e.preventDefault();
+      resultado = casillas().filter((c) => c.checked).map((c) => candidatos[+c.value].texto);
+      d.close();
+    };
+    actualizar();
+    d.addEventListener("close", () => {
+      d.remove();
+      resolve(resultado);
+    });
+    d.showModal();
+  });
+}
+
+// Suma días a una fecha yyyy-mm-dd (negativo para retroceder)
+function sumarDias(iso, dias) {
+  const d = new Date(iso + "T12:00");
+  d.setDate(d.getDate() + dias);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 function hoyISO() {
   const d = new Date();
@@ -1099,7 +1163,8 @@ async function vistaEditor(fecha) {
       <div class="dos">${persona("preside", "Preside")}${persona("dirige", "Dirige")}</div>
       <label>Líderes visitantes</label>
       ${filas("visitantes", (p) => `<div class="dos">${txt(p + ".nombre", "Nombre")}${txt(p + ".llamamiento", "Llamamiento (ej. Presidencia de estaca)")}</div>`, "Agregar líder visitante")}`)}
-    ${seccion(++n, "Anuncios", filas("anuncios", (p) => `<textarea data-f="${p}.texto" rows="2" placeholder="Anuncio">${esc(getPath(draft, p + ".texto"))}</textarea>`, "Agregar anuncio"))}
+    ${seccion(++n, "Anuncios", filas("anuncios", (p) => `<textarea data-f="${p}.texto" rows="2" placeholder="Anuncio">${esc(getPath(draft, p + ".texto"))}</textarea>`, "Agregar anuncio")
+      + `<button type="button" class="btn text sm" id="copiarAnuncios"><span class="ms">content_copy</span>Copiar anuncios de la semana pasada</button>`)}
     ${seccion(++n, "Himno y oración de apertura", himno("primerHimno", "Primer himno") + persona("primeraOracion", "Primera oración", "oracion"))}
     ${seccion(++n, "Asuntos", `<label class="check estaca"><input type="checkbox" data-check="asuntosEstaca" ${draft.asuntosEstaca ? "checked" : ""}>
         Hay asuntos de estaca <span class="muted">(se tratan antes de los del barrio)</span></label>
@@ -1217,6 +1282,22 @@ async function vistaEditor(fecha) {
   main.onclick = async (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    if (b.id === "copiarAnuncios") {
+      // Agenda de la semana anterior: la más reciente entre 1 y 7 días antes de esta
+      const anterior = reuniones
+        .filter((r) => r.id < fecha && r.id >= sumarDias(fecha, -7))
+        .sort((x, y) => y.id.localeCompare(x.id))[0];
+      if (!anterior) return toast("No hay una agenda de la semana pasada.", true);
+      const candidatos = (anterior.anuncios || []).filter((a) => a.texto?.trim());
+      if (!candidatos.length) return toast("La agenda de la semana pasada no tiene anuncios.", true);
+      const yaExisten = new Set(draft.anuncios.map((a) => norm(a.texto)));
+      const elegidos = await elegirAnuncios(candidatos, yaExisten);
+      if (!elegidos?.length) return;
+      draft.anuncios.push(...elegidos.map((texto) => ({ texto })));
+      marcar();
+      render();
+      return toast(`${elegidos.length} anuncio${elegidos.length > 1 ? "s" : ""} copiado${elegidos.length > 1 ? "s" : ""}`);
+    }
     if (b.dataset.pick) return abrirSelector(b.dataset.pick, b.dataset.tipo);
     if (b.dataset.himnoPick) return abrirHimnos(b.dataset.himnoPick);
     if (b.dataset.quitarTestimonio !== undefined) {
